@@ -51,13 +51,13 @@ try:
         args = args[1:]
 
     apidoc.main(args)
-except Exception as e:
+except Exception as e:  # pylint: disable=broad-except
     print("Running `sphinx-apidoc` failed!\n{}".format(e))
 
 # -- General configuration ---------------------------------------------------
 
 # If your documentation needs a minimal Sphinx version, state it here.
-# needs_sphinx = '1.0'
+needs_sphinx = '5.0.0'
 
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
@@ -106,7 +106,7 @@ master_doc = "index"
 
 # General information about the project.
 project = "clairvoyance2"
-copyright = "2022, Evgeny Saveliev"
+copyright = "2022, Evgeny Saveliev"  # pylint: disable=redefined-builtin
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -171,15 +171,31 @@ todo_emit_warnings = True
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = "alabaster"
+import sphinx_rtd_theme  # pylint: disable=unused-import
+extensions.append("sphinx_rtd_theme")
+html_theme = "sphinx_rtd_theme"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-html_theme_options = {
-    "sidebar_width": "300px",
-    "page_width": "1200px"
-}
+# html_theme_options = {
+#     'sidebar_width': '300px',
+#     'page_width': '1200px',
+#     'analytics_id': 'UA-XXXXXXX-1',  #  Provided by Google in your dashboard
+#     'analytics_anonymize_ip': False,
+#     'logo_only': False,
+#     'display_version': True,
+#     'prev_next_buttons_location': 'bottom',
+#     'style_external_links': False,
+#     'vcs_pageview_mode': '',
+#     'style_nav_header_background': 'white',
+#     # Toc options
+#     'collapse_navigation': True,
+#     'sticky_navigation': True,
+#     'navigation_depth': 4,
+#     'includehidden': True,
+#     'titles_only': False
+# }
 
 # Add any paths that contain custom themes here, relative to this directory.
 # html_theme_path = []

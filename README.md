@@ -16,12 +16,4 @@
 
 > clairvoyance2: a Unified Toolkit for Medical Time Series
 
-A longer description of your project goes here...
-
-
-<!-- pyscaffold-notes -->
-
-## Note
-
-This project has been set up using PyScaffold 4.2.3. For details and usage
-information on PyScaffold see https://pyscaffold.org/.
+Description TBC.
