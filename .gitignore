@@ -55,3 +55,6 @@ MANIFEST
 
 # --- Custom --- #
 dev/
+
+scratch*.txt
+debug.py
