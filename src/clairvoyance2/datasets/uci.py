@@ -1,14 +1,13 @@
 import os
 import tarfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
 import unlzw3
 
-from ..data import TimeSeriesSamples
-from . import TDataset
+from ..data import TDataset, TimeSeriesSamples
 from .dataset import DatasetRetriever
 
 _DEBUG = False
@@ -142,18 +141,44 @@ class UCIDiabetesRetriever(DatasetRetriever):
 
         return df_all_features
 
+    @staticmethod
+    def _get_file_id_range():
+        return range(1, 70 + 1)
+
+    def is_cached(self) -> bool:
+        return all(
+            [
+                os.path.exists(os.path.join(self.dataset_cache_dir, f"{file_id}.pkl"))
+                for file_id in self._get_file_id_range()
+            ]
+        )
+
+    def get_cache(self) -> TDataset:
+        list_dfs: List[pd.DataFrame] = []
+        for file_id in self._get_file_id_range():
+            cache_path = os.path.join(self.dataset_cache_dir, f"{file_id}.pkl")
+            list_dfs.append(pd.read_pickle(cache_path))
+        return TimeSeriesSamples(data=list_dfs, categorical_features=None)
+
+    def cache(self, data: TDataset) -> None:
+        assert isinstance(data, TimeSeriesSamples)  # For mypy.
+        for file_id, ts in zip(self._get_file_id_range(), data):
+            cache_path = os.path.join(self.dataset_cache_dir, f"{file_id}.pkl")
+            ts.df.to_pickle(cache_path)
+
     def prepare(self) -> TDataset:
         self.extract()
-        list_dfs = []
-        for file_id in range(1, 70 + 1):
-            list_dfs.append(
-                self.process_individual_file(os.path.join(self.dataset_extracted_dir, f"data-{file_id:02}"))
-            )
+        list_dfs: List[pd.DataFrame] = []
+        for file_id in self._get_file_id_range():
+            df = self.process_individual_file(os.path.join(self.dataset_extracted_dir, f"data-{file_id:02}"))
+            list_dfs.append(df)
         return TimeSeriesSamples(data=list_dfs, categorical_features=None)
 
 
-def uci_diabetes(data_home: Optional[str] = None) -> TimeSeriesSamples:
+def uci_diabetes(
+    data_home: Optional[str] = None, refresh_cache: bool = False, redownload: bool = False
+) -> TimeSeriesSamples:
     retriever = UCIDiabetesRetriever(data_home=data_home)
-    tss = retriever.retrieve()
+    tss = retriever.retrieve(refresh_cache=refresh_cache, redownload=redownload)
     assert isinstance(tss, TimeSeriesSamples)
     return tss

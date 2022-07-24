@@ -25,5 +25,6 @@ class TestIntegration:
         uci = UCIDiabetesRetriever()
         tss = uci.retrieve()
 
+        assert uci.is_cached()
         assert isinstance(tss, TimeSeriesSamples)
         assert len(tss) == 70

@@ -20,6 +20,7 @@ import pandas as pd
 from . import df_constraints as dfc
 from .feature import CategoricalDtype
 from .has_features_mixin import HasFeaturesMixin
+from .has_missing_mixin import HasMissingMixin, TMissingIndicator
 
 TFeatureIndex = Union[int, str]
 TCategoricalDef = Union[Iterable[TFeatureIndex], Mapping[TFeatureIndex, Tuple[CategoricalDtype, ...]]]
@@ -146,7 +147,7 @@ def _validate_nonslice_key_type(key, allowed_types) -> None:
 
 # TODO: Define an ABC?
 # TODO: Interfaces: MutableSequence, (Mutable)Mapping?
-class TimeSeries(HasFeaturesMixin, WrappedDF, SequenceABC):
+class TimeSeries(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
     _DF_CONSTRAINTS = dfc.Constraints(
         on_index=_DF_CONSTRAINTS_TS_INDEX,
         on_columns=_DF_CONSTRAINTS_FEATURES,
@@ -157,9 +158,11 @@ class TimeSeries(HasFeaturesMixin, WrappedDF, SequenceABC):
         self,
         data: TInitContainer,
         categorical_features: TCategoricalDef = tuple(),
+        missing_indicator: TMissingIndicator = np.nan,
     ) -> None:
         # TODO: More ways to initialize features?
         WrappedDF.__init__(self, data=data)
+        HasMissingMixin.__init__(self, missing_indicator=missing_indicator)
         self.set_categorical_def(categorical_features)
         self.validate()
 
@@ -180,7 +183,7 @@ class TimeSeries(HasFeaturesMixin, WrappedDF, SequenceABC):
             return self._data.loc[key, :]
         else:
             # In this case, looking up 0+ rows via a slice, so will return a TimeSeries.
-            return TimeSeries(self._data.loc[key, :], self._categorical_def)
+            return TimeSeries(self._data.loc[key, :], self._categorical_def, self.missing_indicator)
 
     def __iter__(self) -> Iterator[T_TS_StepContainer]:
         for _, row in self._data.iterrows():
@@ -244,7 +247,7 @@ def _make_nested_df(data: Sequence[TimeSeries], index: Sequence[TSamplesIndexDty
     return nested_df
 
 
-class TimeSeriesSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
+class TimeSeriesSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
     _DF_CONSTRAINTS = dfc.Constraints(
         on_index=_DF_CONSTRAINTS_SAMPLES,
         on_columns=_DF_CONSTRAINTS_FEATURES,
@@ -255,6 +258,7 @@ class TimeSeriesSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
         self,
         data: Sequence[T_TSS_InitContainer],
         categorical_features: Optional[TCategoricalDef] = None,
+        missing_indicator: TMissingIndicator = np.nan,
     ) -> None:
         if len(data) == 0:
             # TODO: Handle this case properly.
@@ -275,7 +279,13 @@ class TimeSeriesSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
             elif isinstance(container, (pd.DataFrame, np.ndarray)):
                 if categorical_features is None:
                     categorical_features_ready = tuple()
-                _list_data.append(TimeSeries(data=container, categorical_features=categorical_features_ready))
+                _list_data.append(
+                    TimeSeries(
+                        data=container,
+                        categorical_features=categorical_features_ready,
+                        missing_indicator=missing_indicator,
+                    )
+                )
             else:
                 raise TypeError(
                     f"Must provide an iterable of elements like {T_TSS_InitContainer}, " f"found {type(container)}"
@@ -284,10 +294,17 @@ class TimeSeriesSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
         self._data_internal = tuple(_list_data)
 
         WrappedDF.__init__(self, self._data)
+        HasMissingMixin.__init__(self, missing_indicator=missing_indicator)
         self.set_categorical_def(categorical_features_ready)
         # TODO: Check all nested dataframes definitely have same features?
 
         self.validate()
+
+    @property
+    def has_missing(self) -> bool:
+        return any(
+            [bool(x._data.isnull().sum().sum() > 0) for x in self._data_internal]  # pylint: disable=protected-access
+        )
 
     @property
     def _data_internal(self) -> Tuple[TimeSeries, ...]:
@@ -320,7 +337,9 @@ class TimeSeriesSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
         else:
             new_keys = [i for i in self._data.loc[key, :].index]
             data: Tuple[TimeSeries, ...] = tuple([self._get_single_ts(idx) for idx in new_keys])
-            tss = TimeSeriesSamples(data, categorical_features=self._categorical_def)
+            tss = TimeSeriesSamples(
+                data, categorical_features=self._categorical_def, missing_indicator=self.missing_indicator
+            )
             tss._set_data_with_index(data, new_keys)
             return tss
 
@@ -345,9 +364,6 @@ class TimeSeriesSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
         raise NotImplementedError
 
     # --- Sequence Interface (End) ---
-
-    def iterrows(self) -> Iterator[Tuple[int, TimeSeries]]:
-        return ((idx, ts) for idx, ts in enumerate(self._data_internal))
 
     def plot(self, n: Optional[int] = None) -> Any:
         for idx, ts in enumerate(self._data_internal):
@@ -378,7 +394,7 @@ class TimeSeriesSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
         self._init_features()
 
 
-class StaticSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
+class StaticSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
     _DF_CONSTRAINTS = dfc.Constraints(
         on_index=_DF_CONSTRAINTS_SAMPLES,
         on_columns=_DF_CONSTRAINTS_FEATURES,
@@ -389,8 +405,10 @@ class StaticSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
         self,
         data: TInitContainer,
         categorical_features: TCategoricalDef = tuple(),
+        missing_indicator: TMissingIndicator = np.nan,
     ) -> None:
         WrappedDF.__init__(self, data=data)
+        HasMissingMixin.__init__(self, missing_indicator=missing_indicator)
         self.set_categorical_def(categorical_features)
         self.validate()
 
@@ -405,7 +423,7 @@ class StaticSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
             _validate_nonslice_key_type(key, self._index_dtypes)
             return self._data.loc[key, :]
         else:
-            return StaticSamples(self._data.loc[key, :], self._categorical_def)
+            return StaticSamples(self._data.loc[key, :], self._categorical_def, self.missing_indicator)
 
     def __iter__(self) -> Iterator[TStaticSamplesContainer]:
         for _, row in self._data.iterrows():
@@ -439,6 +457,8 @@ class StaticSamples(HasFeaturesMixin, WrappedDF, SequenceABC):
         WrappedDF.validate(self)
         self._init_features()
 
+
+TDataset = Union[TimeSeriesSamples, Tuple[TimeSeriesSamples, StaticSamples]]  # NOTE: This will evolve.
 
 # Next steps:
 # TODO: TimeToEvent - a version of StaticSamples with some constraints.

@@ -76,6 +76,18 @@ class TestIntegration:
 
             assert id(df_call_output) == id(df_numeric)
 
+        @pytest.mark.parametrize(
+            "df, expected_result",
+            [
+                (pd.DataFrame({"col_1": [1.0, np.nan, 3.0], "col_2": [1, 2, np.nan]}), True),
+                (pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]}), False),
+            ],
+        )
+        def test_has_missing(self, df, expected_result):
+            ts = TimeSeries(data=df)
+            has_missing = ts.has_missing
+            assert has_missing is expected_result
+
         @pytest.mark.slow
         def test_plot_runs(self, df_numeric):
             TimeSeries(data=df_numeric).plot()
@@ -233,6 +245,20 @@ class TestIntegration:
                     TimeSeriesSamples(data=[ts_0, ts_1])
                 assert "incompatible" in str(excinfo.value).lower()
 
+        def test_has_missing(self):
+            ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}))
+            ts_1 = TimeSeries(data=pd.DataFrame({"a": [-1, -2, -3], "b": [-1.0, -2.0, -3.0]}))
+            ts_missing = TimeSeries(data=pd.DataFrame({"a": [-1, np.nan, -3], "b": [-1.0, -2.0, np.nan]}))
+
+            tss_no_missing = TimeSeriesSamples(data=[ts_0, ts_1])
+            tss_missing = TimeSeriesSamples(data=[ts_0, ts_missing])
+
+            expect_false = tss_no_missing.has_missing
+            expect_true = tss_missing.has_missing
+
+            assert expect_false is False
+            assert expect_true is True
+
         def test_data(self, three_numeric_dfs):
             tss = TimeSeriesSamples([TimeSeries(three_numeric_dfs[0]), TimeSeries(three_numeric_dfs[1])])
 
@@ -360,6 +386,18 @@ class TestIntegration:
     class TestStaticSamples:
         def test_init(self, df_numeric):
             StaticSamples(df_numeric)
+
+        @pytest.mark.parametrize(
+            "df, expected_result",
+            [
+                (pd.DataFrame({"col_1": [1.0, np.nan, 3.0], "col_2": [1, 2, np.nan]}), True),
+                (pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]}), False),
+            ],
+        )
+        def test_has_missing(self, df, expected_result):
+            ss = StaticSamples(df)
+            has_missing = ss.has_missing
+            assert has_missing is expected_result
 
         # --- Indexing-related ---
 
