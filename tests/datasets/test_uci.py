@@ -12,7 +12,7 @@ from clairvoyance2.datasets.uci import TimeSeriesSamples, UCIDiabetesRetriever
 @pytest.fixture
 def mock_dataset_root_dir(tmpdir, monkeypatch):
     monkeypatch.setattr(
-        "clairvoyance2.datasets.dataset.DATASET_ROOT_DIR",
+        "clairvoyance2.datasets.dataset_retriever.DATASET_ROOT_DIR",
         tmpdir,
         raising=True,
     )
@@ -23,8 +23,9 @@ class TestIntegration:
     @pytest.mark.slow
     def test_uci_diabetes_retrieve_works(self, mock_dataset_root_dir):
         uci = UCIDiabetesRetriever()
-        tss = uci.retrieve()
+        ds = uci.retrieve()
 
         assert uci.is_cached()
-        assert isinstance(tss, TimeSeriesSamples)
-        assert len(tss) == 70
+        assert isinstance(ds.temporal_covariates, TimeSeriesSamples)
+        assert ds.static_covariates is None
+        assert len(ds.temporal_covariates) == 70

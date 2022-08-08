@@ -209,3 +209,70 @@ class TestIntegration:
         with pytest.raises(TypeError) as excinfo:
             mixin._categorical_def = {"a": [1]}
         assert "expected categories" in str(excinfo.value).lower()
+
+    @pytest.mark.parametrize(
+        "categorical_def, expectation",
+        [
+            (["a", "b"], True),
+            (["a"], True),
+            ([], False),
+        ],
+    )
+    def test_has_categorical_features(self, categorical_def, expectation):
+        mixin = HasFeaturesMixin()
+        mixin._data = pd.DataFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
+        mixin._categorical_def = categorical_def
+
+        assert mixin.has_categorical_features is expectation
+
+    @pytest.mark.parametrize(
+        "categorical_def, expectation",
+        [
+            (["a", "b"], False),
+            (["a"], True),
+            ([], True),
+        ],
+    )
+    def test_has_numeric_features(self, categorical_def, expectation):
+        mixin = HasFeaturesMixin()
+        mixin._data = pd.DataFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
+        mixin._categorical_def = categorical_def
+
+        assert mixin.has_numeric_features is expectation
+
+    @pytest.mark.parametrize(
+        "categorical_def, expectation",
+        [
+            (["a", "b"], True),
+            (["a"], False),
+            ([], False),
+        ],
+    )
+    def test_all_categorical_features(self, categorical_def, expectation):
+        mixin = HasFeaturesMixin()
+        mixin._data = pd.DataFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
+        mixin._categorical_def = categorical_def
+
+        assert mixin.all_categorical_features is expectation
+
+    @pytest.mark.parametrize(
+        "categorical_def, expectation",
+        [
+            (["a", "b"], False),
+            (["a"], False),
+            ([], True),
+        ],
+    )
+    def test_all_numeric_features(self, categorical_def, expectation):
+        mixin = HasFeaturesMixin()
+        mixin._data = pd.DataFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
+        mixin._categorical_def = categorical_def
+
+        assert mixin.all_numeric_features is expectation
+
+    def test_n_features(self):
+        mixin = HasFeaturesMixin()
+        mixin._data = pd.DataFrame({"a": [1, 2, 3], "b": [10, 20, 30]})
+        mixin._categorical_def = []
+
+        assert mixin.n_features == 2

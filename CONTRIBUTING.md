@@ -20,11 +20,9 @@ If you experience bugs or general issues with `clairvoyance2`, please have a loo
 on the [issue tracker].
 If you don't see anything useful there, please feel free to fire an issue report.
 
-:::{tip}
-Please don't forget to include the closed issues in your search.
+> Please don't forget to include the closed issues in your search.
 Sometimes a solution was already reported, and the problem is considered
 **solved**.
-:::
 
 New issue reports should include information about your programming environment
 (e.g., operating system, Python version) and steps to reproduce the problem.
@@ -43,20 +41,18 @@ that any documentation update is done in the same way was a code contribution.
 
 We use [CommonMark] as the markup language for the documentation, facilitated by the [MyST] extension. This also allows the use of [reStructuredText] where necessary.
 
-:::{tip}
-   Please notice that the [GitHub web interface] provides a quick way of
-   propose changes in `clairvoyance2`'s files. While this mechanism can
-   be tricky for normal code contributions, it works perfectly fine for
-   contributing to the docs, and can be quite handy.
-
-   If you are interested in trying this method out, please navigate to
-   the `docs` folder in the source [repository], find which file you
-   would like to propose changes and click in the little pencil icon at the
-   top, to open [GitHub's code editor]. Once you finish editing the file,
-   please write a message in the form at the bottom of the page describing
-   which changes have you made and what are the motivations behind them and
-   submit your proposal.
-:::
+> Please notice that the [GitHub web interface] provides a quick way of
+propose changes in `clairvoyance2`'s files. While this mechanism can
+be tricky for normal code contributions, it works perfectly fine for
+contributing to the docs, and can be quite handy.
+>
+> If you are interested in trying this method out, please navigate to
+the `docs` folder in the source [repository], find which file you
+would like to propose changes and click in the little pencil icon at the
+top, to open [GitHub's code editor]. Once you finish editing the file,
+please write a message in the form at the bottom of the page describing
+which changes have you made and what are the motivations behind them and
+submit your proposal.
 
 When working on documentation changes in your local machine, you can
 compile them using [tox] :
@@ -167,9 +163,8 @@ conda activate clairvoyance2
    This should automatically use [flake8]/[black] to check/fix the code style
    in a way that is compatible with the project.
 
-   :::{important}
-   Don't forget to add unit tests and documentation in case your
-   contribution adds an additional feature and is not just a bugfix.
+   **Don't forget to add unit tests and documentation in case your
+   contribution adds an additional feature and is not just a bugfix.**
 
    Moreover, writing a [descriptive commit message] is highly recommended.
    In case of doubt, you can check the commit history with:

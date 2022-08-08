@@ -90,3 +90,23 @@ class HasFeaturesMixin:
     @property
     def feature_types(self) -> Mapping[TFeatureIndex, FeatureType]:
         return {k: v.feature_type for k, v in self._features.items()}
+
+    @property
+    def has_categorical_features(self) -> bool:
+        return any(f == FeatureType.CATEGORICAL for f in self.feature_types.values())
+
+    @property
+    def has_numeric_features(self) -> bool:
+        return any(f == FeatureType.NUMERIC for f in self.feature_types.values())
+
+    @property
+    def all_categorical_features(self) -> bool:
+        return all(f == FeatureType.CATEGORICAL for f in self.feature_types.values())
+
+    @property
+    def all_numeric_features(self) -> bool:
+        return all(f == FeatureType.NUMERIC for f in self.feature_types.values())
+
+    @property
+    def n_features(self) -> int:
+        return len(self._features)

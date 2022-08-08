@@ -14,3 +14,8 @@ except PackageNotFoundError:  # pragma: no cover
     __version__ = "unknown"
 finally:
     del version, PackageNotFoundError
+
+
+from .interface.prediction_horizon import NStepAheadHorizon
+
+__all__ = ["NStepAheadHorizon"]

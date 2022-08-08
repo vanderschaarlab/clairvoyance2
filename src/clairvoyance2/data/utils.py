@@ -1,4 +1,4 @@
-from typing import Mapping, Tuple, Union
+from typing import Iterable, Mapping, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -40,3 +40,24 @@ def _np_dtype_to_python_type(dtype: type) -> type:
 
 def python_type_from_np_pd_dtype(dtype: type) -> type:
     return _np_dtype_to_python_type(_extract_np_dtype_from_pd(dtype))
+
+
+TIndexDiff = Union[float, int, np.datetime64]
+
+
+def check_index_regular(index: pd.Index) -> Tuple[bool, Optional[TIndexDiff]]:
+    idx_as_list = list(index)
+    diffs = np.diff(idx_as_list)
+    if len(diffs) == 0:
+        return (True, None)
+    else:
+        is_regular = bool((diffs[0] == diffs).all())  # np.bool_ --> bool
+        diff = diffs[0] if is_regular else None
+        return is_regular, diff
+
+
+def split_multi_index_dataframe(df: pd.DataFrame) -> Iterable[pd.DataFrame]:
+    if not isinstance(df.index, pd.MultiIndex):
+        raise ValueError("Data frame did not have a multi-index.")
+    iter_index = list(df.index.levels[0])
+    return (df.loc[idx, :] for idx in iter_index)

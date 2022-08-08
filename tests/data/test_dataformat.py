@@ -112,7 +112,7 @@ class TestIntegration:
             assert length == 3
 
         class TestGetItem:
-            def test_nonslice_key(self):
+            def test_single_item_key(self):
                 data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]})
                 ts = TimeSeries(data=data)
 
@@ -124,7 +124,7 @@ class TestIntegration:
                 assert (ts_0.values == [1.0, 1]).all()
                 assert (ts_2.values == [3.0, 3]).all()
 
-            def test_nonslice_key_raises_type_error(self, df_numeric):
+            def test_single_item_key_raises_type_error(self, df_numeric):
                 ts = TimeSeries(data=df_numeric)
 
                 with pytest.raises(TypeError) as excinfo:
@@ -132,7 +132,7 @@ class TestIntegration:
                 assert "key is of inappropriate type" in str(excinfo.value).lower()
 
             @pytest.mark.parametrize("key", [12, 12.5])
-            def test_nonslice_key_raises_key_error(self, key, df_numeric):
+            def test_single_item_key_raises_key_error(self, key, df_numeric):
                 ts = TimeSeries(data=df_numeric)
 
                 with pytest.raises(KeyError):
@@ -147,7 +147,7 @@ class TestIntegration:
                     (slice(0.5, 0.8), 0),
                 ],
             )
-            def test_slice_key(self, key, expected_length, df_numeric):
+            def test_single_slice_key(self, key, expected_length, df_numeric):
                 # NOTE: This behavior may change. Currently using .loc[key, :].
                 ts = TimeSeries(data=df_numeric)
 
@@ -155,6 +155,41 @@ class TestIntegration:
 
                 assert isinstance(sliced, TimeSeries)
                 assert len(sliced._data) == expected_length  # pylint: disable=protected-access
+
+            def test_tuple_of_two_keys_item_item(self):
+                df = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11, 12, 13], "col_3": [-1.0, -2.0, -3.0]})
+                ts = TimeSeries(data=df)
+                ts_new = ts[2, "col_3"]
+
+                assert isinstance(ts_new, pd.Series)
+                assert len(ts_new) == 1
+                assert (ts_new.values == [-3.0]).all()
+
+            def test_tuple_of_two_keys_item_slice(self):
+                df = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11, 12, 13], "col_3": [-1.0, -2.0, -3.0]})
+                ts = TimeSeries(data=df)
+                ts_new = ts[2, :"col_2"]
+
+                assert isinstance(ts_new, pd.Series)
+                assert len(ts_new) == 2
+                assert (ts_new.values == [3.0, 13]).all()
+
+            def test_tuple_of_two_keys_slice_slice(self):
+                df = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 2], "col_3": [3.0, 3.0, 3.0]})
+                ts = TimeSeries(data=df)
+                ts_new = ts[1:, "col_2":]
+
+                assert len(ts_new.df) == 2
+                assert list(ts_new.df.index) == [1, 2]
+                assert list(ts_new.df.columns) == ["col_2", "col_3"]
+                assert "col_2" in ts_new.features and "col_3" in ts_new.features
+
+            def test_key_wrong_tuple(self, df_numeric):
+                ts = TimeSeries(data=df_numeric)
+
+                with pytest.raises(KeyError) as excinfo:
+                    _ = ts[2, "col_3", 123]
+                assert "tuple of 2" in str(excinfo.value).lower()
 
         def test_iter(self):
             data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]})
@@ -208,6 +243,59 @@ class TestIntegration:
             assert issubclass(TimeSeries, typing.Collection)
             assert issubclass(TimeSeries, typing.Sized)
             assert issubclass(TimeSeries, typing.Sequence)
+
+        def test_to_numpy_no_change_shape(self):
+            data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
+            ts = TimeSeries(data)
+
+            array = ts.to_numpy(padding_indicator=-999.0, max_len=None)
+
+            assert (ts._data.values == array).all()  # pylint: disable=protected-access
+
+        def test_to_numpy_extend(self):
+            data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
+            ts = TimeSeries(data)
+
+            array = ts.to_numpy(padding_indicator=-999.0, max_len=10)
+
+            assert array.shape == (10, 2)
+            assert (ts._data.values == array[:3, :]).all()  # pylint: disable=protected-access
+            assert (array[3:, :] == -999.0).all()
+
+        def test_to_numpy_shrink(self):
+            data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
+            ts = TimeSeries(data)
+
+            array = ts.to_numpy(padding_indicator=-999.0, max_len=2)
+
+            assert array.shape == (2, 2)
+            assert (ts._data.values[:2, :] == array).all()  # pylint: disable=protected-access
+
+        def test_to_numpy_raise_found_padding_indicator(self):
+            data = pd.DataFrame({"col_1": [1.0, -999.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
+            ts = TimeSeries(data)
+
+            with pytest.raises(ValueError) as excinfo:
+                ts.to_numpy(padding_indicator=-999.0, max_len=None)
+            assert "found in" in str(excinfo.value).lower()
+
+        def test_copy(self):
+            data = pd.DataFrame({"col_1": [1.0, -999.0, np.nan], "col_2": ["a", "b", "a"]})
+            ts = TimeSeries(data, categorical_features=["col_2"], missing_indicator=np.nan)
+
+            ts_copy = ts.copy()
+            ts_copy._data.loc[0, "col_1"] = 12345.0  # pylint: disable=protected-access
+
+            assert id(ts_copy) != id(ts)
+            assert id(ts_copy.df) != id(ts.df)
+            assert id(ts_copy._data) != id(ts._data)  # pylint: disable=protected-access
+            assert ts._data.loc[0, "col_1"] == 1.0  # pylint: disable=protected-access
+            assert ts_copy._data.loc[0, "col_1"] == 12345.0  # pylint: disable=protected-access
+
+        def test_n_timesteps(self, df_numeric):
+            ts = TimeSeries(data=df_numeric)
+            length = ts.n_timesteps
+            assert length == 3
 
     class TestTimeSeriesSamples:
         # TODO: Test initialisation from 3D numpy array.
@@ -324,12 +412,12 @@ class TestIntegration:
             assert len(items) == 2
             assert all(items[0]._data.columns == tss._data.columns)  # pylint: disable=protected-access
 
-        def test_getitem_nonslice_key(self, three_numeric_dfs):
+        def test_getitem_single_item_key(self, three_numeric_dfs):
             tss = TimeSeriesSamples([TimeSeries(three_numeric_dfs[0]), TimeSeries(three_numeric_dfs[1])])
             tss_0 = tss[0]
             assert isinstance(tss_0, TimeSeries)
 
-        def test_getitem_slice_key(self, three_numeric_dfs):
+        def test_getitem_single_slice_key(self, three_numeric_dfs):
             tss = TimeSeriesSamples(
                 [
                     TimeSeries(three_numeric_dfs[0]),
@@ -341,6 +429,20 @@ class TestIntegration:
             assert isinstance(sliced, TimeSeriesSamples)
             assert len(sliced._data_internal_) == 2  # pylint: disable=protected-access
             assert all([1, 2] == sliced._data.index)  # pylint: disable=protected-access
+
+        def test_getitem_tuple_of_two_keys_slice_slice(self, three_numeric_dfs):
+            tss = TimeSeriesSamples(
+                [
+                    TimeSeries(three_numeric_dfs[0]),
+                    TimeSeries(three_numeric_dfs[1]),
+                    TimeSeries(three_numeric_dfs[2]),
+                ]
+            )
+            tss_new = tss[1:, "b":]
+
+            assert len(tss_new.df) == 2
+            assert list(tss_new.df.index) == [1, 2]
+            assert list(tss_new.df.columns) == ["b"]
 
         def test_contains(self, three_numeric_dfs):
             tss = TimeSeriesSamples([TimeSeries(three_numeric_dfs[0]), TimeSeries(three_numeric_dfs[1])])
@@ -383,6 +485,127 @@ class TestIntegration:
             tss.plot(n=1)
             tss.plot()
 
+        @pytest.mark.parametrize("max_len, expect_padding", [(2, False), (3, True), (4, True), (5, True)])
+        def test_to_numpy(self, max_len, expect_padding):
+            tss = TimeSeriesSamples(
+                [
+                    TimeSeries(pd.DataFrame({"a": [1.0, 2.0, 3.0], "b": [11.0, 12.0, 13.0]})),
+                    TimeSeries(pd.DataFrame({"a": [-1.0, -2.0], "b": [-11.0, -12.0]})),
+                    TimeSeries(pd.DataFrame({"a": [10.0, 20.0, 30.0, 40.0], "b": [111.0, 122.0, 133.0, 144.0]})),
+                ]
+            )
+
+            array = tss.to_numpy(padding_indicator=-999.0, max_len=max_len)
+
+            assert array.shape == (3, max_len, 2)
+            if expect_padding:
+                assert -999.0 in array
+            else:
+                assert -999.0 not in array
+
+        def test_to_numpy_max_len_none(self):
+            tss = TimeSeriesSamples(
+                [
+                    TimeSeries(pd.DataFrame({"a": [1.0, 2.0, 3.0], "b": [11.0, 12.0, 13.0]})),
+                    TimeSeries(pd.DataFrame({"a": [-1.0, -2.0], "b": [-11.0, -12.0]})),
+                    TimeSeries(pd.DataFrame({"a": [10.0, 20.0, 30.0, 40.0], "b": [111.0, 122.0, 133.0, 144.0]})),
+                ]
+            )
+
+            array = tss.to_numpy(padding_indicator=-999.0, max_len=None)
+
+            assert array.shape == (3, 4, 2)
+            assert -999.0 in array
+
+        class TestIsRegularMethod:
+            def test_true(self):
+                ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}, index=[8, 10, 12]))
+                ts_1 = TimeSeries(data=pd.DataFrame({"a": [-1, -2, -3], "b": [-1.0, -2.0, -3.0]}, index=[0, 2, 4]))
+                tss = TimeSeriesSamples(data=[ts_0, ts_1])
+
+                is_regular, diff = tss.is_regular()
+
+                assert is_regular is True
+                assert diff == 2
+
+            def test_true_one_time_series_only(self):
+                ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}, index=[8, 10, 12]))
+                tss = TimeSeriesSamples(data=[ts_0])
+
+                is_regular, diff = tss.is_regular()
+
+                assert is_regular is True
+                assert diff == 2
+
+            def test_false(self):
+                ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}, index=[8, 20, 21]))
+                ts_1 = TimeSeries(data=pd.DataFrame({"a": [-1, -2, -3], "b": [-1.0, -2.0, -3.0]}, index=[8, 20, 25]))
+                tss = TimeSeriesSamples(data=[ts_0, ts_1])
+
+                is_regular, diff = tss.is_regular()
+
+                assert is_regular is False
+                assert diff is None
+
+            def test_false_one_time_series_only(self):
+                ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}, index=[8, 20, 21]))
+                tss = TimeSeriesSamples(data=[ts_0])
+
+                is_regular, diff = tss.is_regular()
+
+                assert is_regular is False
+                assert diff is None
+
+        def test_copy(self, three_numeric_dfs):
+            tss = TimeSeriesSamples(
+                [
+                    TimeSeries(three_numeric_dfs[0]),
+                    TimeSeries(three_numeric_dfs[1]),
+                    TimeSeries(three_numeric_dfs[2]),
+                ],
+            )
+            tss_copy = tss.copy()
+            tss_copy[0]._data.loc[0, "a"] = 12345  # pylint: disable=protected-access
+
+            assert id(tss_copy) != id(tss)
+            assert id(tss_copy.df) != id(tss.df)
+            assert id(tss_copy[0]) != id(tss[0])
+            assert id(tss_copy._data) != id(tss._data)  # pylint: disable=protected-access
+            assert tss[0].df.loc[0, "a"] == 1
+            assert tss_copy[0].df.loc[0, "a"] == 12345
+
+        def test_to_multi_index_dataframe(self, three_numeric_dfs):
+            tss = TimeSeriesSamples(
+                [
+                    TimeSeries(three_numeric_dfs[0]),
+                    TimeSeries(three_numeric_dfs[1]),
+                    TimeSeries(three_numeric_dfs[2]),
+                ],
+            )
+            multi = tss.to_multi_index_dataframe()
+
+            expected_df = pd.DataFrame(
+                {"a": [1, 2, 3, 7, 8, 9, -1, -2, -3], "b": [1.0, 2.0, 3.0, 7.0, 8.0, 9.0, 11.0, 12.0, 13.0]},
+                index=((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)),
+            )
+
+            assert (multi.index == expected_df.index).all()
+            assert (multi.columns == expected_df.columns).all()
+            assert (multi == expected_df).all().all()
+
+        def test_sample_indices(self, three_numeric_dfs):
+            tss = TimeSeriesSamples(
+                [
+                    TimeSeries(three_numeric_dfs[0]),
+                    TimeSeries(three_numeric_dfs[1]),
+                    TimeSeries(three_numeric_dfs[2]),
+                ],
+            )
+
+            sample_indices = tss.sample_indices
+
+            assert sample_indices == [0, 1, 2]
+
     class TestStaticSamples:
         def test_init(self, df_numeric):
             StaticSamples(df_numeric)
@@ -406,7 +629,7 @@ class TestIntegration:
             length = len(ss)
             assert length == 3
 
-        def test_nonslice_key(self):
+        def test_getitem_single_item_key(self):
             data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]})
             ss = StaticSamples(data)
 
@@ -418,7 +641,7 @@ class TestIntegration:
             assert (ss_0.values == [1.0, 1]).all()
             assert (ss_2.values == [3.0, 3]).all()
 
-        def test_slice_key(self):
+        def test_getitem_single_slice_key(self):
             data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]})
             ss = StaticSamples(data)
 
@@ -426,6 +649,16 @@ class TestIntegration:
 
             assert isinstance(sliced, StaticSamples)
             assert len(sliced._data) == 1  # pylint: disable=protected-access
+
+        def test_getitem_tuple_of_two_keys_slice_slice(self):
+            data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]})
+            ss = StaticSamples(data)
+
+            sliced = ss[1:, "col_2":]
+
+            assert len(sliced.df) == 2
+            assert list(sliced.df.index) == [1, 2]
+            assert list(sliced.df.columns) == ["col_2"]
 
         def test_iter(self):
             data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]})
@@ -488,3 +721,24 @@ class TestIntegration:
             assert len(features) == 2
             assert features["col_1"].feature_type == FeatureType.NUMERIC
             assert features["col_2"].feature_type == FeatureType.CATEGORICAL
+
+        def test_to_numpy(self):
+            data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
+            ss = StaticSamples(data)
+
+            array = ss.to_numpy()
+
+            assert (ss._data.values == array).all()  # pylint: disable=protected-access
+
+        def test_copy(self):
+            data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
+            ss = StaticSamples(data)
+
+            ss_copy = ss.copy()
+            ss_copy._data.loc[0, "col_1"] = 12345.0  # pylint: disable=protected-access
+
+            assert id(ss_copy) != id(ss)
+            assert id(ss_copy.df) != id(ss.df)
+            assert id(ss_copy._data) != id(ss._data)  # pylint: disable=protected-access
+            assert ss._data.loc[0, "col_1"] == 1.0  # pylint: disable=protected-access
+            assert ss_copy._data.loc[0, "col_1"] == 12345.0  # pylint: disable=protected-access

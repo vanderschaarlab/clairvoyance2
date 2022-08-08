@@ -1,3 +1,3 @@
-from .default_imputer import DefaultTimeSeriesSamplesImputer
+from .default_imputer import DefaultImputerTC
 
-__all__ = ["DefaultTimeSeriesSamplesImputer"]
+__all__ = ["DefaultImputerTC"]

@@ -17,10 +17,15 @@ from typing import (
 import numpy as np
 import pandas as pd
 
+from ..utils.dev import raise_not_implemented
+from . import DEFAULT_PADDING_INDICATOR
 from . import df_constraints as dfc
+from .dataformat_base import Copyable, CustomGetItemMixin, WrappedDF
 from .feature import CategoricalDtype
 from .has_features_mixin import HasFeaturesMixin
 from .has_missing_mixin import HasMissingMixin, TMissingIndicator
+from .to_numpy_mixin import ToNumpyMixin
+from .utils import TIndexDiff, check_index_regular
 
 TFeatureIndex = Union[int, str]
 TCategoricalDef = Union[Iterable[TFeatureIndex], Mapping[TFeatureIndex, Tuple[CategoricalDtype, ...]]]
@@ -38,6 +43,16 @@ T_TS_StepContainer = Union[pd.Series]  # pyright: ignore # NOTE: May expand this
 with warnings.catch_warnings():
     # This is to suppress (expected) FutureWarnings for index types like pd.Int64Index.
     warnings.filterwarnings("ignore", message=r".*Use pandas.Index.*", category=FutureWarning)
+
+    T_TS_Index = Union[
+        pd.RangeIndex,
+        pd.DatetimeIndex,
+        pd.Int64Index,
+        pd.UInt64Index,
+        pd.Float64Index,
+        pd.Index,
+        "pd.NumericIndex",
+    ]
 
     _DF_CONSTRAINTS_FEATURES = dfc.IndexConstraints(
         (
@@ -73,6 +88,7 @@ with warnings.catch_warnings():
             pd.Float64Index,
             pd.NumericIndex if "NumericIndex" in dir(pd) else pd.Index,  # Future-proofing.
             # NOTE: Other candidates: TimedeltaIndex, PeriodIndex.
+            # NOTE: Must match T_TS_Index.
         ),
         dtypes=(int, float, np.datetime64),  # NOTE: Must match TSIndexDtype.
         dtype_object_constrain_types=None,
@@ -88,66 +104,8 @@ _DF_CONSTRAINT_DATAPOINTS = dfc.ElementConstraints(
 )
 
 
-# TODO: Unit test.
-class WrappedDF:
-    _DF_CONSTRAINTS: dfc.Constraints
-
-    def __init__(self, data) -> None:
-        if isinstance(data, np.ndarray):
-            data = _process_init_from_ndarray(data)
-        dfc.ConstraintsChecker(self._DF_CONSTRAINTS).check(data)
-
-        self._data: pd.DataFrame = data
-
-        # Convenience.
-        assert (
-            self._DF_CONSTRAINTS.on_index is not None
-            and self._DF_CONSTRAINTS.on_index.dtypes is not None
-            and len(self._DF_CONSTRAINTS.on_index.dtypes) > 0
-        )
-        self._index_dtypes: Tuple[type, ...] = tuple(self._DF_CONSTRAINTS.on_index.dtypes)
-
-        WrappedDF.validate(self)  # In case derived classes override.
-
-    @property
-    def df(self) -> pd.DataFrame:
-        return self._data
-
-    @df.setter
-    def df(self, value: pd.DataFrame) -> None:
-        self._data = value
-        self.validate()
-
-    def __repr__(self) -> str:
-        return self._data.__repr__()
-
-    def _repr_html_(self) -> Optional[str]:
-        return self._data._repr_html_()  # pylint: disable=protected-access
-
-    def __str__(self) -> str:
-        return self._data.__str__()
-
-    def plot(self) -> Any:
-        return self._data.plot()
-
-    def validate(self) -> None:
-        dfc.ConstraintsChecker(self._DF_CONSTRAINTS).check(self._data)
-
-
-def _process_init_from_ndarray(array: np.ndarray) -> pd.DataFrame:
-    if array.ndim != 2:
-        raise ValueError(f"TimeSeries can be constructed from a 2D array only, found {array.ndim} dimensions.")
-    return pd.DataFrame(data=array)
-
-
-def _validate_nonslice_key_type(key, allowed_types) -> None:
-    if not isinstance(key, allowed_types):
-        raise TypeError(f"Key is of inappropriate type: must be a slice or one of {allowed_types}, was {type(key)}")
-
-
 # TODO: Define an ABC?
-# TODO: Interfaces: MutableSequence, (Mutable)Mapping?
-class TimeSeries(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
+class TimeSeries(HasFeaturesMixin, HasMissingMixin, ToNumpyMixin, CustomGetItemMixin, Copyable, WrappedDF, SequenceABC):
     _DF_CONSTRAINTS = dfc.Constraints(
         on_index=_DF_CONSTRAINTS_TS_INDEX,
         on_columns=_DF_CONSTRAINTS_FEATURES,
@@ -167,23 +125,38 @@ class TimeSeries(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
         self.validate()
 
     # --- Sequence Interface ---
-    # TODO: There is quite a bit of shared implementation around here, need to refactor in some way, compare with
-    #       implementation in classes StaticSamples, TimeSeriesSamples.
 
     def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, key: Union[T_TS_IndexDtype, slice]) -> Union["TimeSeries", T_TS_StepContainer]:
-        # TODO: two slices key, similar to np array.
-        if not isinstance(key, slice):
-            # If key is not a slice, check it's the right type.
-            # When the key is a slice this check cannot be sensibly done, so rely on pandas to fail as necessary.
-            _validate_nonslice_key_type(key, self._index_dtypes)
-            # In this case, looking up one row, so will return the row as TSTimestepType.
-            return self._data.loc[key, :]
+    def _getitem_key_index(
+        self,
+        key_index: Union[T_TS_IndexDtype, slice],
+        single_item: bool,
+    ):
+        if single_item:
+            assert not isinstance(key_index, slice)
+            return self._data.loc[key_index, :]
         else:
-            # In this case, looking up 0+ rows via a slice, so will return a TimeSeries.
-            return TimeSeries(self._data.loc[key, :], self._categorical_def, self.missing_indicator)
+            return TimeSeries(
+                self._data.loc[key_index, :], self._categorical_def, missing_indicator=self.missing_indicator
+            )
+
+    def _getitem_key_column(
+        self,
+        key_column: Union[TFeatureIndex, slice],
+    ):
+        new_data = self._data.loc[:, key_column]
+        if isinstance(new_data, pd.Series):
+            new_data = pd.DataFrame(data=new_data, columns=[key_column])
+        new_categorical_def = {col: val for col, val in self._categorical_def.items() if col in new_data.columns}
+        return TimeSeries(new_data, new_categorical_def, missing_indicator=self.missing_indicator)
+
+    # Override to introduce typehints.
+    def __getitem__(  # pylint: disable=useless-super-delegation
+        self, key: Union[T_TS_IndexDtype, slice, Tuple[Union[T_TS_IndexDtype, slice], Union[TFeatureIndex, slice]]]
+    ) -> Union["TimeSeries", T_TS_StepContainer]:
+        return super().__getitem__(key)
 
     def __iter__(self) -> Iterator[T_TS_StepContainer]:
         for _, row in self._data.iterrows():
@@ -192,6 +165,7 @@ class TimeSeries(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
     def __contains__(
         self, value: Union[T_TS_IndexDtype, T_TS_StepContainer, Tuple[T_TS_IndexDtype, T_TS_StepContainer]]
     ) -> bool:
+        # TODO: This should probably be changed, some likely unnecessary functionality.
         if isinstance(value, pd.Series):
             # Check by row content.
             for row in self:
@@ -230,6 +204,32 @@ class TimeSeries(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
 
     # --- Sequence Interface (End) ---
 
+    def _to_numpy_time_series(
+        self, padding_indicator: float = DEFAULT_PADDING_INDICATOR, max_len: Optional[int] = None
+    ) -> np.ndarray:
+        # TODO: Currently assumes that the values are all float, may wish different handling in case there are ints.
+        array = self._data.to_numpy()  # Note we make a copy.
+        if padding_indicator in array:
+            raise ValueError(
+                f"Value `{padding_indicator}` found in time series array, choose a different padding indicator"
+            )
+        n_timesteps, _ = array.shape
+        max_len = max_len if max_len is not None else n_timesteps
+        if max_len > n_timesteps:
+            array = np.pad(
+                array, [(0, max_len - n_timesteps), (0, 0)], mode="constant", constant_values=padding_indicator
+            )
+        elif max_len < n_timesteps:
+            array = array[:max_len, :]
+        return array
+
+    def is_regular(self) -> Tuple[bool, Optional[TIndexDiff]]:
+        return check_index_regular(index=self._data.index)
+
+    @property
+    def n_timesteps(self) -> int:
+        return len(self)
+
     def validate(self):
         WrappedDF.validate(self)
         self._init_features()
@@ -247,7 +247,9 @@ def _make_nested_df(data: Sequence[TimeSeries], index: Sequence[TSamplesIndexDty
     return nested_df
 
 
-class TimeSeriesSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
+class TimeSeriesSamples(
+    HasFeaturesMixin, HasMissingMixin, ToNumpyMixin, CustomGetItemMixin, Copyable, WrappedDF, SequenceABC
+):
     _DF_CONSTRAINTS = dfc.Constraints(
         on_index=_DF_CONSTRAINTS_SAMPLES,
         on_columns=_DF_CONSTRAINTS_FEATURES,
@@ -279,6 +281,8 @@ class TimeSeriesSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceAB
             elif isinstance(container, (pd.DataFrame, np.ndarray)):
                 if categorical_features is None:
                     categorical_features_ready = tuple()
+                else:
+                    categorical_features_ready = categorical_features
                 _list_data.append(
                     TimeSeries(
                         data=container,
@@ -321,27 +325,45 @@ class TimeSeriesSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceAB
     def _df_for_features(self) -> pd.DataFrame:
         return self._data_internal_[0].df
 
+    # --- Sequence Interface ---
+
     def _get_single_ts(self, key: TSamplesIndexDtype):
         return self._data_internal[self._data.index.get_loc(key)]
-
-    # --- Sequence Interface ---
 
     def __len__(self) -> int:
         return len(self._data_internal)
 
-    def __getitem__(self, key: Union[TSamplesIndexDtype, slice]) -> Union[TimeSeries, "TimeSeriesSamples"]:
-        # TODO: two slices key, similar to np array.
-        if not isinstance(key, slice):
-            _validate_nonslice_key_type(key, self._index_dtypes)
-            return self._get_single_ts(key)
+    def _getitem_key_index(
+        self,
+        key_index: Union[TSamplesIndexDtype, slice],
+        single_item: bool,
+    ):
+        if single_item:
+            assert not isinstance(key_index, slice)
+            return self._get_single_ts(key_index)
         else:
-            new_keys = [i for i in self._data.loc[key, :].index]
+            new_keys = [i for i in self._data.loc[key_index, :].index]
             data: Tuple[TimeSeries, ...] = tuple([self._get_single_ts(idx) for idx in new_keys])
-            tss = TimeSeriesSamples(
-                data, categorical_features=self._categorical_def, missing_indicator=self.missing_indicator
-            )
-            tss._set_data_with_index(data, new_keys)
+            tss = TimeSeriesSamples(data, self._categorical_def, missing_indicator=self.missing_indicator)
+            tss._set_data_with_index(data, new_keys)  # pylint: disable=protected-access
             return tss
+
+    def _getitem_key_column(
+        self,
+        key_column: Union[TFeatureIndex, slice],
+    ):
+        new_data = [d._data.loc[:, key_column] for d in self._data_internal]  # pylint: disable=protected-access
+        if isinstance(new_data[0], pd.Series):
+            new_data = [pd.DataFrame(data=d, columns=[key_column]) for d in self._data_internal]
+        new_categorical_def = {col: val for col, val in self._categorical_def.items() if col in new_data[0].columns}
+        return TimeSeriesSamples(new_data, new_categorical_def, missing_indicator=self.missing_indicator)
+
+    # Override to introduce typehints.
+    def __getitem__(  # pylint: disable=useless-super-delegation
+        self,
+        key: Union[TSamplesIndexDtype, slice, Tuple[Union[TSamplesIndexDtype, slice], Union[TFeatureIndex, slice]]],
+    ):
+        return super().__getitem__(key)
 
     def __iter__(self) -> Iterator[TimeSeries]:
         for ts in self._data_internal:
@@ -364,6 +386,16 @@ class TimeSeriesSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceAB
         raise NotImplementedError
 
     # --- Sequence Interface (End) ---
+
+    def _to_numpy_time_series(
+        self, padding_indicator: float = DEFAULT_PADDING_INDICATOR, max_len: Optional[int] = None
+    ) -> np.ndarray:
+        if max_len is None:
+            max_len = max(self.n_timesteps_per_sample)
+        arrays = []
+        for ts in self._data_internal:
+            arrays.append(ts.to_numpy(padding_indicator=padding_indicator, max_len=max_len))
+        return np.asarray(arrays)
 
     def plot(self, n: Optional[int] = None) -> Any:
         for idx, ts in enumerate(self._data_internal):
@@ -389,12 +421,37 @@ class TimeSeriesSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceAB
     def n_timesteps_per_sample(self) -> Sequence[int]:
         return [len(ts) for ts in self]
 
+    def is_regular(self) -> Tuple[bool, Optional[TIndexDiff]]:
+        diff_list = []
+        for ts in self._data_internal:
+            is_regular, diff = check_index_regular(index=ts._data.index)  # pylint: disable=protected-access
+            diff_list.append(diff)
+            if is_regular is False:
+                return False, None
+        if len(diff_list) == 0:
+            return True, None
+        else:
+            return all([x == diff_list[0] for x in diff_list]), diff_list[0]
+
+    def is_aligned(self) -> bool:
+        raise_not_implemented("is_aligned() check on timeseries samples.")
+
     def validate(self):
         WrappedDF.validate(self)
         self._init_features()
 
+    def to_multi_index_dataframe(self) -> pd.DataFrame:
+        # TODO: Copy?
+        return pd.concat([x.df for x in self._data_internal], axis=0, keys=self._data.index)
 
-class StaticSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
+    @property
+    def sample_indices(self) -> Sequence[TSamplesIndexDtype]:
+        return list(self._data.index)
+
+
+class StaticSamples(
+    HasFeaturesMixin, HasMissingMixin, ToNumpyMixin, CustomGetItemMixin, Copyable, WrappedDF, SequenceABC
+):
     _DF_CONSTRAINTS = dfc.Constraints(
         on_index=_DF_CONSTRAINTS_SAMPLES,
         on_columns=_DF_CONSTRAINTS_FEATURES,
@@ -417,13 +474,35 @@ class StaticSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
     def __len__(self) -> int:
         return len(self._data)
 
-    def __getitem__(self, key: Union[TSamplesIndexDtype, slice]) -> Union["StaticSamples", TStaticSamplesContainer]:
-        # TODO: two slices key, similar to np array.
-        if not isinstance(key, slice):
-            _validate_nonslice_key_type(key, self._index_dtypes)
-            return self._data.loc[key, :]
+    def _getitem_key_index(
+        self,
+        key_index: Union[TSamplesIndexDtype, slice],
+        single_item: bool,
+    ):
+        if single_item:
+            assert not isinstance(key_index, slice)
+            return self._data.loc[key_index, :]
         else:
-            return StaticSamples(self._data.loc[key, :], self._categorical_def, self.missing_indicator)
+            return StaticSamples(
+                self._data.loc[key_index, :], self._categorical_def, missing_indicator=self.missing_indicator
+            )
+
+    def _getitem_key_column(
+        self,
+        key_column: Union[TFeatureIndex, slice],
+    ):
+        new_data = self._data.loc[:, key_column]
+        if isinstance(new_data, pd.Series):
+            new_data = pd.DataFrame(data=new_data, columns=[key_column])
+        new_categorical_def = {col: val for col, val in self._categorical_def.items() if col in new_data.columns}
+        return StaticSamples(new_data, new_categorical_def, missing_indicator=self.missing_indicator)
+
+    # Override to introduce typehints.
+    def __getitem__(  # pylint: disable=useless-super-delegation
+        self,
+        key: Union[TSamplesIndexDtype, slice, Tuple[Union[TSamplesIndexDtype, slice], Union[TFeatureIndex, slice]]],
+    ) -> Union["StaticSamples", TStaticSamplesContainer]:
+        return super().__getitem__(key)
 
     def __iter__(self) -> Iterator[TStaticSamplesContainer]:
         for _, row in self._data.iterrows():
@@ -449,6 +528,9 @@ class StaticSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
 
     # --- Sequence Interface (End) ---
 
+    def _to_numpy_static(self) -> np.ndarray:
+        return self._data.to_numpy()  # Note we make a copy.
+
     @property
     def n_samples(self) -> int:
         return len(self._data)
@@ -457,8 +539,6 @@ class StaticSamples(HasFeaturesMixin, HasMissingMixin, WrappedDF, SequenceABC):
         WrappedDF.validate(self)
         self._init_features()
 
-
-TDataset = Union[TimeSeriesSamples, Tuple[TimeSeriesSamples, StaticSamples]]  # NOTE: This will evolve.
 
 # Next steps:
 # TODO: TimeToEvent - a version of StaticSamples with some constraints.
