@@ -1,9 +1,21 @@
 from dataclasses import dataclass
-from typing import Iterable, Optional, Sequence
+from typing import Iterable, Optional, Sequence, Tuple
 
+import numpy as np
 import pandas as pd
 
-from .utils import all_items_are_of_types, python_type_from_np_pd_dtype
+from ..utils.common import python_type_from_np_pd_dtype
+from .internal_utils import all_items_are_of_types
+
+# NOTE: Obtained from https://pbpython.com/pandas_dtypes.html. May not be fully accurate.
+PD_ACCEPTABLE_EQUIVALENT_DTYPES = (object, int, float, bool, np.datetime64, pd.Timedelta, pd.Categorical)
+
+
+# TODO: Unit test.
+def cast_to_index_constraints_dtypes(dtypes_tuple: Tuple[type, ...]) -> Tuple[type, ...]:
+    python_equivalents = [python_type_from_np_pd_dtype(t) for t in dtypes_tuple]
+    casts = [t if t in PD_ACCEPTABLE_EQUIVALENT_DTYPES else object for t in python_equivalents]
+    return tuple(set(casts))
 
 
 @dataclass
@@ -69,7 +81,7 @@ class ConstraintsChecker:
                     raise TypeError(
                         f"DataFrame {index_or_columns_str} of dtype object must be constrained "
                         f"to the following types: {constraints.dtype_object_constrain_types}. "
-                        f"Check dtype of each element of DataFrame{index_or_columns_str}"
+                        f"Check dtype of each element of DataFrame {index_or_columns_str}"
                     )
         if constraints.enforce_monotonic_increasing:
             if not index_or_columns.is_monotonic_increasing:

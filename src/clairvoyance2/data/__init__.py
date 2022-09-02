@@ -1,5 +1,5 @@
-from .constants import DEFAULT_PADDING_INDICATOR
-from .dataformat import StaticSamples, TFeatureIndex, TimeSeries, TimeSeriesSamples
+from .constants import DEFAULT_PADDING_INDICATOR, T_FeatureIndexDtype, T_TSIndexDtype
+from .dataformat import StaticSamples, TimeSeries, TimeSeriesSamples
 from .dataset import Dataset
 from .feature import CategoricalFeature, Feature, FeatureType
 
@@ -10,7 +10,8 @@ __all__ = [
     "Feature",
     "FeatureType",
     "StaticSamples",
-    "TFeatureIndex",
+    "T_TSIndexDtype",
+    "T_FeatureIndexDtype",
     "TimeSeries",
     "TimeSeriesSamples",
 ]

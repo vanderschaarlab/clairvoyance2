@@ -16,6 +16,6 @@ finally:
     del version, PackageNotFoundError
 
 
-from .interface.prediction_horizon import NStepAheadHorizon
+from .interface.horizon import NStepAheadHorizon, TimeIndexHorizon
 
-__all__ = ["NStepAheadHorizon"]
+__all__ = ["TimeIndexHorizon", "NStepAheadHorizon"]

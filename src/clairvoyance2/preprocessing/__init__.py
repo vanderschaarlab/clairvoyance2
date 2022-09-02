@@ -1,19 +1,29 @@
-from .convenience import ExtractTargetsTS
+from .convenience import (
+    AddStaticCovariatesTC,
+    AddTimeIndexFeatureTC,
+    ExtractTargetsTC,
+    ExtractTreatmentsTC,
+)
 from .sklearn_transformer import (
-    MinMaxScalerSC,
-    MinMaxScalerTC,
-    SklearnTransformerSC,
-    SklearnTransformerTC,
-    StandardScalerSC,
-    StandardScalerTC,
+    MinMaxScalerStatic,
+    MinMaxScalerTemporal,
+    OneHotEncoderTemporal,
+    SklearnTransformerStatic,
+    SklearnTransformerTemporal,
+    StandardScalerStatic,
+    StandardScalerTemporal,
 )
 
 __all__ = [
-    "ExtractTargetsTS",
-    "MinMaxScalerSC",
-    "SklearnTransformerSC",
-    "StandardScalerSC",
-    "MinMaxScalerTC",
-    "SklearnTransformerTC",
-    "StandardScalerTC",
+    "AddStaticCovariatesTC",
+    "AddTimeIndexFeatureTC",
+    "ExtractTargetsTC",
+    "ExtractTreatmentsTC",
+    "MinMaxScalerStatic",
+    "MinMaxScalerTemporal",
+    "OneHotEncoderTemporal",
+    "SklearnTransformerStatic",
+    "SklearnTransformerTemporal",
+    "StandardScalerStatic",
+    "StandardScalerTemporal",
 ]

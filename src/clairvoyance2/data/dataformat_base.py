@@ -1,40 +1,109 @@
 import copy
-from typing import Any, Generic, Optional, Tuple, TypeVar, Union
+from abc import ABC, abstractmethod
+from collections.abc import Sequence
+from typing import (
+    Any,
+    Dict,
+    Generic,
+    Iterable,
+    Iterator,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import numpy as np
 import pandas as pd
 
 from . import df_constraints as dfc
+from .constants import T_CategoricalDef
+
+# TODO: May get rid of this Generic[TIndexItem, TColumnItem], not hugely useful.
+TIndexItem = TypeVar("TIndexItem")
+TColumnItem = TypeVar("TColumnItem")
+
+TIndexIndexers = Union[TIndexItem, slice, Iterable]
+TColumnIndexers = Union[TColumnItem, slice, Iterable]
+
+
+class CustomGetItemMixin(Generic[TIndexItem, TColumnItem]):
+    _data: pd.DataFrame
+    categorical_def: Any  # NOTE: Should be `T_CategoricalDef`, but currently can't make work with mypy.
+
+    # Define this in inheriting classes.
+    def _getitem_index(self, index_key: TIndexIndexers):
+        raise NotImplementedError
+
+    # Define this in inheriting classes.
+    def _getitem_column(self, column_key: TColumnIndexers):
+        raise NotImplementedError
+
+    # A helper for the straight-forward (_data is simple DF) case.
+    def _getitem_index_helper(self, index_key: TIndexIndexers) -> pd.DataFrame:
+        new_data: pd.DataFrame = self._data.loc[index_key, :]
+        if isinstance(new_data, pd.Series):
+            # Handle the case of where single item indexer leads to a pd.Series being returned, by indexing such that
+            # a pd.DataFrame is returned.
+            new_data = self._data.loc[[index_key], :]
+        return new_data
+
+    # A helper for the straight-forward (_data is simple DF) case.
+    def _getitem_column_helper(self, column_key: TColumnIndexers) -> Tuple[pd.DataFrame, T_CategoricalDef]:
+        new_data: pd.DataFrame = self._data.loc[:, column_key]
+        if isinstance(new_data, pd.Series):
+            # Handle the case of where single item indexer leads to a pd.Series being returned, by indexing such that
+            # a pd.DataFrame is returned.
+            new_data = self._data.loc[:, [column_key]]
+        new_categorical_def = {col: val for col, val in self.categorical_def.items() if col in new_data.columns}
+        return new_data, new_categorical_def
+
+    def _getitem_index_then_column_key(self, index_key, column_key):
+        # First create a new temporary object with the new columns:
+        temp: "CustomGetItemMixin" = self._getitem_column(column_key=column_key)
+        # Then _getitem_key_index() on index:
+        return temp._getitem_index(index_key)  # pylint: disable=protected-access
+
+    def __getitem__(self, key: Union[TIndexIndexers, Tuple[TIndexIndexers, TColumnIndexers]]):
+        if isinstance(key, tuple) and len(key) == 2:
+            index_key, column_key = key
+            try:
+                return self._getitem_index_then_column_key(index_key, column_key)
+            except KeyError:
+                # Fall back to getitem on index.
+                return self._getitem_index(key)
+        else:
+            return self._getitem_index(key)
 
 
 # TODO: Unit test.
-class WrappedDF:
-    _DF_CONSTRAINTS: dfc.Constraints
+class BaseContainer(CustomGetItemMixin[TIndexItem, TColumnItem], Sequence):
+    _df_constraints: dfc.Constraints
 
     def __init__(self, data) -> None:
         if isinstance(data, np.ndarray):
             data = _process_init_from_ndarray(data)
-        dfc.ConstraintsChecker(self._DF_CONSTRAINTS).check(data)
+        dfc.ConstraintsChecker(self._df_constraints).check(data)
 
         self._data: pd.DataFrame = data
 
         # Convenience.
         assert (
-            self._DF_CONSTRAINTS.on_index is not None
-            and self._DF_CONSTRAINTS.on_index.dtypes is not None
-            and len(self._DF_CONSTRAINTS.on_index.dtypes) > 0
+            self._df_constraints.on_index is not None
+            and self._df_constraints.on_index.dtypes is not None
+            and len(self._df_constraints.on_index.dtypes) > 0
         )
-        self._index_dtypes: Tuple[type, ...] = tuple(self._DF_CONSTRAINTS.on_index.dtypes)
+        self._index_dtypes: Tuple[type, ...] = tuple(self._df_constraints.on_index.dtypes)
         if (
-            self._DF_CONSTRAINTS.on_columns is not None
-            and self._DF_CONSTRAINTS.on_columns.dtypes is not None
-            and len(self._DF_CONSTRAINTS.on_columns.dtypes) > 0
+            self._df_constraints.on_columns is not None
+            and self._df_constraints.on_columns.dtypes is not None
+            and len(self._df_constraints.on_columns.dtypes) > 0
         ):
-            self._column_dtypes: Optional[Tuple[type, ...]] = tuple(self._DF_CONSTRAINTS.on_columns.dtypes)
+            self._column_dtypes: Optional[Tuple[type, ...]] = tuple(self._df_constraints.on_columns.dtypes)
         else:
             self._column_dtypes = None
 
-        WrappedDF.validate(self)  # In case derived classes override.
+        BaseContainer.validate(self)  # In case derived classes override.
 
     @property
     def df(self) -> pd.DataFrame:
@@ -57,68 +126,39 @@ class WrappedDF:
     def plot(self) -> Any:
         return self._data.plot()
 
+    @property
+    def empty(self) -> bool:
+        return self._data.empty
+
     def validate(self) -> None:
-        dfc.ConstraintsChecker(self._DF_CONSTRAINTS).check(self._data)
+        dfc.ConstraintsChecker(self._df_constraints).check(self._data)
 
+    # --- Sequence Interface ---
 
-TIndexItem = TypeVar("TIndexItem")
-TColumnItem = TypeVar("TColumnItem")
+    def __len__(self) -> int:
+        return len(self._data)
 
+    def __getitem__(self, key):  # pylint: disable=useless-super-delegation
+        return super().__getitem__(key)
 
-# TODO: Unit test.
-class CustomGetItemMixin(Generic[TIndexItem, TColumnItem]):
-    # Requires the following to be defined (from WrappedDF):
-    _index_dtypes: Tuple[type, ...]
-    _column_dtypes: Optional[Tuple[type, ...]]
+    def __iter__(self) -> Iterator:
+        for idx in self._data.index:
+            yield self[idx]
 
-    # Define this in inheriting classes.
-    def _getitem_key_index(self, key_index: Union[TIndexItem, slice], single_item: bool):
+    def __contains__(self, value) -> bool:
+        return value in self._data.index
+
+    def __reversed__(self) -> Iterator:
+        for idx in self._data.index[::-1]:
+            yield self[idx]
+
+    def index(self, value, start=0, stop=None):
         raise NotImplementedError
 
-    # Define this in inheriting classes.
-    def _getitem_key_column(self, key_column: Union[TColumnItem, slice]):
+    def count(self, value):
         raise NotImplementedError
 
-    def _getitem_single_item_key(self, key):
-        return self._getitem_key_index(key_index=key, single_item=True)
-
-    def _getitem_single_slice_key(self, key):
-        return self._getitem_key_index(key_index=key, single_item=False)
-
-    def _getitem_tuple_of_two_keys(self, key_index, key_column):
-        # First create a new temporary object with the new columns:
-        temp_ = self._getitem_key_column(key_column=key_column)
-        # Then __getitem__() on index:
-        return temp_.__getitem__(key_index)
-
-    def __getitem__(self, key: Union[TIndexItem, slice, Tuple[Union[TIndexItem, slice], Union[TColumnItem, slice]]]):
-        if isinstance(key, tuple) and len(key) == 1:
-            # If a tuple with one item, cast the key as the item.
-            key = key[0]
-        if not isinstance(key, slice):
-            # If key is not a slice...
-            if not isinstance(key, tuple):
-                # Key is single index item, check it's the right type.
-                _validate_nonslice_key_type(key, self._index_dtypes)
-                # In this case, looking up one row.
-                return self._getitem_single_item_key(key)
-            else:
-                # Key is a tuple...
-                if len(key) != 2:
-                    # Ensure it's a tuple of 2.
-                    raise KeyError("The key, if tuple, must be a tuple of 2 elements")
-                else:
-                    key_index, key_column = key
-                    # Key is single index item, check it's the right type:
-                    if not isinstance(key_index, slice):
-                        _validate_nonslice_key_type(key_index, self._index_dtypes)
-                    if not isinstance(key_column, slice) and self._column_dtypes is not None:
-                        _validate_nonslice_key_type(key_column, self._column_dtypes)
-                    return self._getitem_tuple_of_two_keys(key_index, key_column)
-        else:
-            # When the key is a slice type check cannot be sensibly done, so rely on pandas to fail as necessary.
-            # In this case, looking up 0+ rows via a slice, so will return a TimeSeries.
-            return self._getitem_single_slice_key(key)
+    # --- Sequence Interface (End) ---
 
 
 def _process_init_from_ndarray(array: np.ndarray) -> pd.DataFrame:
@@ -127,14 +167,20 @@ def _process_init_from_ndarray(array: np.ndarray) -> pd.DataFrame:
     return pd.DataFrame(data=array)
 
 
-def _validate_nonslice_key_type(key, allowed_types) -> None:
-    if len(allowed_types) > 0:
-        if not isinstance(key, allowed_types):
-            raise TypeError(f"Key is of inappropriate type: must be a slice or one of {allowed_types}, was {type(key)}")
-
-
 class Copyable:
     def copy(self):
         # Default implementation of copy.
         # May wish to have custom version in derived classes.
         return copy.deepcopy(self)
+
+
+class SupportsNewLike(ABC):
+    @staticmethod
+    def process_kwargs(kwargs: Dict[str, Any], kwargs_default: Dict[str, Any]) -> Dict[str, Any]:
+        kwargs_default.update(kwargs)
+        return kwargs_default
+
+    @staticmethod
+    @abstractmethod
+    def new_like(like: Any, **kwargs) -> "SupportsNewLike":
+        ...

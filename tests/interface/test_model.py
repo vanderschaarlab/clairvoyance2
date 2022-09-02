@@ -1,4 +1,4 @@
-from typing import Dict, Mapping
+from typing import Dict, Mapping, NamedTuple
 from unittest.mock import Mock
 
 import pytest
@@ -92,7 +92,7 @@ class TestBaseModel:
                 ({"param_1": 0, "param_2": False}, {"param_1": 0, "param_2": False}, {"param_1": 0, "param_2": False}),
                 (
                     {"param_1": 0, "param_2": False},
-                    DotMap({"param_1": 0, "param_2": False}),
+                    DotMap({"param_1": 0, "param_2": False}, _dynamic=False),
                     {"param_1": 0, "param_2": False},
                 ),
                 ({"param_1": 0, "param_2": False}, {"param_1": 1, "param_2": True}, {"param_1": 1, "param_2": True}),
@@ -155,6 +155,89 @@ class TestBaseModel:
                 )
 
             assert params_processed == {"param_1": 0, "param_2": False}
+
+    class TestRepr:
+        @pytest.mark.parametrize(
+            "default_params",
+            [
+                {"param_1": 0, "param_2": [1, 22]},
+                NamedTuple("DP", param_1=int, param_2=list)(param_1=0, param_2=[1, 22]),  # type: ignore
+            ],
+        )
+        def test_typical_case(self, default_params):
+            class MyModel(BaseModel):
+                mock_check_model_requirements = Mock()
+                DEFAULT_PARAMS = default_params
+
+                def _fit(self, data: Dataset) -> "MyModel":
+                    # Do something...
+                    return self
+
+                def check_model_requirements(self) -> None:
+                    # Do some checks...
+                    self.mock_check_model_requirements()
+
+            my_model = MyModel()
+            repr_ = str(my_model)
+
+            assert "MyModel(" == repr_[0:8]
+            assert repr_[-1] == ")"
+            assert "\n" in repr_
+            assert "params=" in repr_
+            assert "inferred_params=" not in repr_
+            assert "'param_1': 0" in repr_
+            assert "'param_2': [1, 22]" in repr_
+
+        def test_empty_params(self):
+            class MyModel(BaseModel):
+                mock_check_model_requirements = Mock()
+                DEFAULT_PARAMS = dict()
+
+                def _fit(self, data: Dataset) -> "MyModel":
+                    # Do something...
+                    return self
+
+                def check_model_requirements(self) -> None:
+                    # Do some checks...
+                    self.mock_check_model_requirements()
+
+            my_model = MyModel()
+            repr_ = str(my_model)
+
+            assert "MyModel(" == repr_[0:8]
+            assert repr_[-1] == ")"
+            assert "\n" in repr_
+            assert "params=" in repr_
+            assert "inferred_params=" not in repr_
+            assert "{}" in repr_
+
+        def test_has_inferred_params(self):
+            class MyModel(BaseModel):
+                mock_check_model_requirements = Mock()
+                DEFAULT_PARAMS = {"param_1": 0, "param_2": [1, 22]}
+
+                def _fit(self, data: Dataset) -> "MyModel":
+                    # Do something...
+                    return self
+
+                def check_model_requirements(self) -> None:
+                    # Do some checks...
+                    self.mock_check_model_requirements()
+
+            my_model = MyModel()
+            my_model.inferred_params.ip_1 = 123
+            my_model.inferred_params.ip_2 = (2, 8)
+            repr_ = str(my_model)
+
+            assert "MyModel(" == repr_[0:8]
+            assert repr_[-1] == ")"
+            assert "\n" in repr_
+            assert "params=" in repr_
+            assert "inferred_params=" in repr_
+            assert "'param_1': 0" in repr_
+            assert "'param_2': [1, 22]" in repr_
+            assert "'ip_1': 123" in repr_
+            assert "'ip_2': (2, 8)" in repr_
 
 
 class TestTransformerModel:

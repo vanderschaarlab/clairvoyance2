@@ -149,6 +149,19 @@ class TestNumericFeature_Init_InferDtype:
         assert f.dtype == expected_dtype
 
 
+class TestNumericFeature_NumericCompatibleProperty:
+    @pytest.mark.parametrize(
+        "data",
+        [
+            pd.Series([1, 2, 6, 5, 3, 4]),
+            pd.Series([1.5, 2.5, 6.5, 5.5, 3.5, 4.5]),
+        ],
+    )
+    def test_get_success(self, data):
+        f = Feature(data=data, feature_type=FeatureType.NUMERIC, infer_dtype=True)
+        assert f.numeric_compatible is True
+
+
 class TestCategoricalFeature_Init:
     def test_infer_categories_true_and_categories_passed_fails(self, pd_series_ints):
         with pytest.raises(ValueError) as excinfo:
@@ -227,6 +240,22 @@ class TestCategoricalFeature_Init_InferDtype_InferCategories:
         assert f.feature_type == FeatureType.CATEGORICAL
         assert f.dtype == expected_dtype
         assert f.categories == expected_categories
+
+
+class TestCategoricalFeature_NumericCompatibleProperty:
+    @pytest.mark.parametrize("infer_dtype", [True, False])
+    @pytest.mark.parametrize(
+        "data, dtype, expect",
+        [
+            (pd.Series([1, 2, 2, 1]), int, True),
+            (pd.Series([1.5, 2.5, 2.5, 1.5]), float, True),
+            (pd.Series(["a", "b", "c", "c"]), str, False),
+        ],
+    )
+    def test_get_success(self, data, dtype, infer_dtype, expect):
+        dtype = dtype if infer_dtype is False else None
+        f = CategoricalFeature(data=data, infer_dtype=infer_dtype, dtype=dtype, infer_categories=True)
+        assert f.numeric_compatible == expect
 
 
 class TestCategoricalFeature_CategoriesProperty:

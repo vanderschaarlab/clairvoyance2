@@ -1,14 +1,22 @@
 import pprint
 import warnings
 from abc import ABC, abstractmethod
-from typing import Any, Dict, NamedTuple, Optional, Union
+from typing import Any, Dict, List, NamedTuple, Optional, Sequence, Tuple, Union
 
+import numpy as np
+import pandas as pd
 from dotmap import DotMap
 
-from ..data import Dataset
-from ..utils.dev import function_is_notimplemented_stub
-from .prediction_horizon import THorizon
-from .requirements import Requirements, RequirementsChecker
+from ..data import Dataset, TimeSeries
+from ..data.constants import (
+    T_ContainerInitializable,
+    T_SamplesIndexDtype,
+    T_SamplesIndexDtype_AsTuple,
+)
+from ..utils.common import safe_init_dotmap
+from ..utils.dev import function_is_notimplemented_stub, raise_not_implemented
+from .horizon import Horizon, TimeIndexHorizon
+from .requirements import Requirements, RequirementsChecker, TreatmentType
 
 TParams = Dict[str, Any]  # TODO: May constrain this.
 TDefaultParams = Union[TParams, NamedTuple]
@@ -21,12 +29,12 @@ class BaseModel(ABC):
 
     def __init__(self, params: Optional[TParams] = None) -> None:
         self.params: DotMap = self._process_params(params)
+        self.inferred_params: DotMap = safe_init_dotmap(dict(), _dynamic=False)
         self.check_model_requirements()
         self._fit_called = False
         super().__init__()
 
     def _process_params(self, params: Optional[TParams]) -> DotMap:
-        # TODO: Unit test this function.
         if self.check_unknown_params is False and len(self.DEFAULT_PARAMS) > 0:
             warnings.warn(
                 "`check_unknown_params` was set to False even though `DEFAULT_PARAMS` were explicitly set "
@@ -36,19 +44,18 @@ class BaseModel(ABC):
             )
         try:
             default_params = self.DEFAULT_PARAMS._asdict()  # type: ignore
-        except AttributeError:
-            default_params = self.DEFAULT_PARAMS
-        if params is None:
-            copied_params = default_params.copy()
-            processed_params: Dict[str, Any] = (
-                DotMap(copied_params) if not isinstance(copied_params, DotMap) else copied_params
-            )
-        else:
+        except AttributeError as ex:
+            if "_asdict" in str(ex):
+                default_params = self.DEFAULT_PARAMS
+            else:
+                raise
+        if params is not None:
             unknown_params = [p for p in params.keys() if p not in default_params]
             if len(unknown_params) > 0 and self.check_unknown_params is True:
                 raise ValueError(f"Unknown parameter(s) passed: {unknown_params}")
-            copied_params = default_params.copy()
-            processed_params = DotMap(copied_params) if not isinstance(copied_params, DotMap) else copied_params
+        copied_params = default_params.copy()
+        processed_params: Dict[str, Any] = safe_init_dotmap(copied_params, _dynamic=False)
+        if params is not None:
             processed_params.update({k: v for k, v in params.items() if k in default_params})
         return processed_params
 
@@ -69,18 +76,23 @@ class BaseModel(ABC):
     def _fit(self, data: Dataset) -> "BaseModel":  # pragma: no cover
         ...
 
-    def __repr__(self) -> str:
-        repr_str = f"{self.__class__.__name__}(\n"
+    def _repr_dict(self, dict_: Dict, name: str) -> str:
         tab = "    "
         pp = pprint.PrettyPrinter(indent=4)
+        pretty_dict = pp.pformat(dict_).replace("\t", tab)
+        dict_prefix = f"{name}="
+        dict_repr = f"{dict_prefix}{pretty_dict}"
+        dict_repr = tab + f"\n{tab}{' ' * len(dict_prefix)}".join(dict_repr.split("\n"))
+        return dict_repr
 
-        pretty_params = pp.pformat(self.params.toDict()).replace("\t", tab)
-        params_prefix = "params="
-        params = f"{params_prefix}{pretty_params}"
-        params = tab + f"\n{tab}{' ' * len(params_prefix)}".join(params.split("\n"))
-
-        repr_str += f"{params}\n)"
-
+    def __repr__(self) -> str:
+        repr_str = f"{self.__class__.__name__}(\n"
+        params = self._repr_dict(self.params.toDict(), name="params")
+        if len(self.inferred_params) > 0:
+            inferred_params = "\n" + self._repr_dict(self.inferred_params.toDict(), name="inferred_params")
+        else:
+            inferred_params = ""
+        repr_str += f"{params}{inferred_params}\n)"
         return repr_str
 
 
@@ -120,27 +132,27 @@ class TransformerModel(BaseModel, ABC):
 
 # TODO: Unit test once the interface is solidified.
 class PredictorModel(BaseModel, ABC):
-    def predict(self, data: Dataset, horizon: THorizon = None) -> Dataset:
+    def predict(self, data: Dataset, horizon: Horizon) -> Dataset:
         if not self._fit_called:
             raise RuntimeError("Must call `fit` before calling `predict`")
         self.check_data_requirements(data, horizon=horizon)
         return self._predict(data, horizon)
 
-    def fit(self, data: Dataset, horizon: THorizon = None) -> "PredictorModel":
+    def fit(self, data: Dataset, horizon: Optional[Horizon] = None) -> "PredictorModel":
         self.check_data_requirements(data, horizon=horizon)
         result = self._fit(data, horizon=horizon)
         self._fit_called = True
         return result
 
     @abstractmethod
-    def _fit(self, data: Dataset, horizon: THorizon = None) -> "PredictorModel":  # pragma: no cover
+    def _fit(self, data: Dataset, horizon: Optional[Horizon] = None) -> "PredictorModel":  # pragma: no cover
         ...
 
     @abstractmethod
-    def _predict(self, data: Dataset, horizon: THorizon) -> Dataset:  # pragma: no cover
+    def _predict(self, data: Dataset, horizon: Horizon) -> Dataset:  # pragma: no cover
         ...
 
-    def fit_predict(self, data: Dataset, horizon: THorizon = None) -> Dataset:
+    def fit_predict(self, data: Dataset, horizon: Horizon) -> Dataset:
         self.fit(data)
         return self.predict(data, horizon)
 
@@ -149,3 +161,102 @@ class PredictorModel(BaseModel, ABC):
 
         # Additional requirements for any PredictorModel:
         RequirementsChecker.check_prediction_requirements(self)
+
+
+# TODO: Static counterfactual predictions / treatments case TBD.
+# TODO: This will likely need an overhaul - to handle more than just "one sample at a time" case.
+# NOTE: The Sequence below iterates over the different treatment "cases".
+TTreatmentScenariosInitializable = Sequence[Union[T_ContainerInitializable, TimeSeries]]
+TTreatmentScenarios = Sequence[TimeSeries]
+TCounterfactualPredictions = Sequence[TimeSeries]
+
+
+class TreatmentEffectsModel(PredictorModel, ABC):
+    def predict_counterfactuals(
+        self,
+        data: Dataset,
+        sample_index: T_SamplesIndexDtype,
+        treatment_scenarios: TTreatmentScenariosInitializable,
+        horizon: TimeIndexHorizon,
+    ) -> TCounterfactualPredictions:
+        if not self._fit_called:
+            raise RuntimeError("Must call `fit` before calling `predict_counterfactuals`")
+        data_processed, treatment_scenarios_processed = self._process_predict_counterfactuals_input(
+            data, sample_index=sample_index, treatment_scenarios=treatment_scenarios, horizon=horizon
+        )
+        self.check_data_requirements(data_processed, treatment_scenarios=treatment_scenarios_processed, horizon=horizon)
+        return self._predict_counterfactuals(data_processed, sample_index, treatment_scenarios_processed, horizon)
+
+    @abstractmethod
+    def _fit(self, data: Dataset, horizon: Optional[Horizon] = None) -> "TreatmentEffectsModel":  # pragma: no cover
+        ...
+
+    # TODO: Test.
+    def _process_predict_counterfactuals_input(
+        self,
+        data: Dataset,
+        sample_index: T_SamplesIndexDtype,
+        treatment_scenarios: TTreatmentScenariosInitializable,
+        horizon: TimeIndexHorizon,
+    ) -> Tuple[Dataset, Sequence[TimeSeries]]:
+        if not isinstance(sample_index, T_SamplesIndexDtype_AsTuple):
+            raise ValueError(
+                f"Expected sample index to be one of {T_SamplesIndexDtype_AsTuple} " f"but was {type(sample_index)}"
+            )
+        if sample_index not in data.sample_indices:
+            raise ValueError(f"Sample with index {sample_index} not found in data")
+        if len(horizon.time_index_sequence) != 1:
+            raise ValueError(
+                "Time index sequence specified in the time index horizon must contain exactly one "
+                "time index when predicting counterfactuals for a specific sample, "
+                f"but {len(horizon.time_index_sequence)}-many time indexes were found"
+            )
+        if len(treatment_scenarios) == 0:
+            raise ValueError("Must provide at least one treatment scenario")
+        assert self.requirements.treatment_effects_requirements is not None
+        if self.requirements.treatment_effects_requirements.treatment_type == TreatmentType.TIME_SERIES:
+            horizon_time_index = horizon.time_index_sequence[0]
+            expect_timesteps = len(treatment_scenarios[0])
+            if not all(len(t) == expect_timesteps for t in treatment_scenarios):
+                raise ValueError("All treatment scenarios must have the same number of timesteps but did not")
+            if data.temporal_treatments is None:
+                raise ValueError("`temporal_treatments` must be specified in data but was None")
+            template_ts = data.temporal_treatments[sample_index]
+            assert isinstance(template_ts, TimeSeries)
+            list_ts: List[TimeSeries] = []
+            for treatment_scenario in treatment_scenarios:
+                if isinstance(treatment_scenario, TimeSeries):
+                    treatment_scenario_df = treatment_scenario.df
+                if isinstance(treatment_scenario, np.ndarray):
+                    treatment_scenario_df = pd.DataFrame(
+                        data=treatment_scenario, columns=template_ts.df.columns, index=horizon_time_index
+                    )
+                else:
+                    treatment_scenario_df = treatment_scenario
+                assert isinstance(treatment_scenario_df, pd.DataFrame)
+                if list(treatment_scenario_df.index) != list(horizon_time_index):
+                    raise ValueError(
+                        f"Unexpected time index in treatment scenarios, expected {horizon_time_index} "
+                        f"found {treatment_scenario_df.index}."
+                    )
+                treatment_scenario_ts = TimeSeries.new_like(like=template_ts, data=treatment_scenario_df)
+                list_ts.append(treatment_scenario_ts)
+            return data[sample_index], list_ts
+        else:
+            raise_not_implemented(f"predict_counterfactuals() for non-{str(TreatmentType.TIME_SERIES)}")
+
+    @abstractmethod
+    def _predict_counterfactuals(
+        self,
+        data: Dataset,
+        sample_index: T_SamplesIndexDtype,
+        treatment_scenarios: TTreatmentScenarios,
+        horizon: TimeIndexHorizon,
+    ) -> TCounterfactualPredictions:
+        ...
+
+    def check_model_requirements(self) -> None:
+        super().check_model_requirements()
+
+        # Additional requirements for any TreatmentEffectsModel:
+        RequirementsChecker.check_treatment_effects_requirements(self)

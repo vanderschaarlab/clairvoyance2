@@ -1,4 +1,8 @@
 from ..interface import NStepAheadHorizon
-from .recurrent import RecurrentPredictor
+from .recurrent import RecurrentNetNStepAheadClassifier, RecurrentNetNStepAheadRegressor
 
-__all__ = ["NStepAheadHorizon", "RecurrentPredictor"]
+__all__ = [
+    "NStepAheadHorizon",
+    "RecurrentNetNStepAheadClassifier",
+    "RecurrentNetNStepAheadRegressor",
+]

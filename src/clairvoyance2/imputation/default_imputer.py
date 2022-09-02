@@ -17,7 +17,7 @@ class DefaultImputerTC(TransformerModel):
     )
 
     def _fit(self, data: Dataset) -> "DefaultImputerTC":
-        temporal_covariates, _, _ = data
+        temporal_covariates = data.temporal_covariates
 
         assert isinstance(temporal_covariates, TimeSeriesSamples)  # For mypy
         df_global = pd.concat([x.df for x in temporal_covariates], axis=0, ignore_index=True)
@@ -38,18 +38,14 @@ class DefaultImputerTC(TransformerModel):
 
     def _transform(self, data: Dataset) -> Dataset:
         data = data.copy()
-        temporal_covariates, _, _ = data
+        temporal_covariates = data.temporal_covariates
 
         assert isinstance(temporal_covariates, TimeSeriesSamples)  # For mypy
         list_ts = []
         for ts in temporal_covariates:
             list_ts.append(self._impute_single_timeseries(ts))
 
-        new_temporal_covariates = TimeSeriesSamples(
-            list_ts,
-            categorical_features=temporal_covariates._categorical_def,  # pylint: disable=protected-access
-            missing_indicator=temporal_covariates.missing_indicator,
-        )
+        new_temporal_covariates = TimeSeriesSamples.new_like(like=temporal_covariates, data=list_ts)
         assert not new_temporal_covariates.has_missing
 
         data.temporal_covariates = new_temporal_covariates

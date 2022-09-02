@@ -1,8 +1,4 @@
-from .time_series_metrics import (
-    MSEMetricTL,
-    RMSEMetricTL,
-    mse_temporal_targets,
-    rmse_temporal_targets,
-)
+from .metric import MetricFor, TMetricValue
+from .time_series_metrics import MSEMetricTS, RMSEMetricTS, mse_ts, rmse_ts
 
-__all__ = ["MSEMetricTL", "RMSEMetricTL", "mse_temporal_targets", "rmse_temporal_targets"]
+__all__ = ["MetricFor", "MSEMetricTS", "RMSEMetricTS", "mse_ts", "rmse_ts", "TMetricValue"]

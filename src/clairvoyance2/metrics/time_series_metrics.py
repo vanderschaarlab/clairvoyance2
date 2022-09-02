@@ -1,20 +1,16 @@
-from abc import ABC, abstractmethod
-from typing import Union
-
 import numpy as np
 import pandas as pd
 
-from ..data import Dataset
-from ..data.utils import python_type_from_np_pd_dtype
+from ..data import Dataset, TimeSeries
+from ..data.constants import T_NumericDtype_AsTuple
+from ..utils.common import python_type_from_np_pd_dtype
+from .metric import BaseMetric, MetricFor, TMetricValue
 
-TMetricValue = Union[float]  # pyright: ignore
 
-
-# TODO: Metric Requirements and checks.
-class BaseMetric(ABC):
-    @abstractmethod
-    def __call__(self, data_true: Dataset, data_pred: Dataset) -> TMetricValue:
-        ...
+# Abbreviation: TS = Time Series
+class BaseMetricTS(BaseMetric):
+    def __init__(self) -> None:
+        super().__init__(metric_for=MetricFor.TEMPORAL_TARGETS)
 
 
 def squared_error(arr_true: np.ndarray, arr_pred: np.ndarray) -> np.ndarray:
@@ -23,20 +19,21 @@ def squared_error(arr_true: np.ndarray, arr_pred: np.ndarray) -> np.ndarray:
 
 
 # TODO: Multiple types of output - per sample, per time-step sample, overall value.
-# Abbreviation: TL = Temporal Labels
-class MSEMetricTL(BaseMetric):
+class MSEMetricTS(BaseMetricTS):
     def __call__(self, data_true: Dataset, data_pred: Dataset) -> TMetricValue:
 
         # TODO: All this will be moved to Metric requirements.
         assert data_true.temporal_targets is not None
         assert data_pred.temporal_targets is not None
 
-        acceptable_types = (int, float)
-        assert python_type_from_np_pd_dtype(data_true.temporal_targets[0].df.index.dtype) in acceptable_types
-        assert python_type_from_np_pd_dtype(data_pred.temporal_targets[0].df.index.dtype) in acceptable_types
+        acceptable_types = T_NumericDtype_AsTuple
+        ts = data_true.temporal_targets[0]
+        assert isinstance(ts, TimeSeries)
+        assert python_type_from_np_pd_dtype(ts.time_index.dtype) in acceptable_types
+        assert python_type_from_np_pd_dtype(ts.time_index.dtype) in acceptable_types
         # TODO: ^ Make a convenience method to get the above `dtype` easily.
 
-        assert list(data_true.temporal_targets.features.keys()) == list(data_pred.temporal_targets.features.keys())
+        assert list(data_true.temporal_targets.feature_names) == list(data_pred.temporal_targets.feature_names)
 
         assert data_true.temporal_targets.sample_indices == data_pred.temporal_targets.sample_indices
 
@@ -59,12 +56,10 @@ class MSEMetricTL(BaseMetric):
         return overall_mean_metric
 
 
-mse_temporal_targets = MSEMetricTL()
-
-
-class RMSEMetricTL(MSEMetricTL):
+class RMSEMetricTS(MSEMetricTS):
     def __call__(self, data_true: Dataset, data_pred: Dataset) -> TMetricValue:
         return super().__call__(data_true, data_pred) ** (1 / 2)
 
 
-rmse_temporal_targets = RMSEMetricTL()
+mse_ts = MSEMetricTS()
+rmse_ts = RMSEMetricTS()

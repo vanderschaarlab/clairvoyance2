@@ -1,15 +1,17 @@
 from abc import ABC, abstractmethod
 from enum import Enum, auto
-from typing import Any, Mapping, NoReturn, Optional, Sequence, Tuple, Union
+from typing import Any, Mapping, NoReturn, Optional, Sequence, Tuple
 
 import numpy as np
-import pandas as pd
 
-from .utils import (
-    NP_EQUIVALENT_TYPES_MAP,
-    all_items_are_of_types,
-    python_type_from_np_pd_dtype,
+from ..utils.common import NP_EQUIVALENT_TYPES_MAP, python_type_from_np_pd_dtype
+from .constants import (
+    T_CategoricalDtype,
+    T_CategoricalDtype_AsTuple,
+    T_FeatureContainer,
+    T_NumericDtype_AsTuple,
 )
+from .internal_utils import all_items_are_of_types
 
 _DEBUG = False
 
@@ -19,19 +21,16 @@ class FeatureType(Enum):
     CATEGORICAL = auto()
 
 
-CategoricalDtype = Union[int, str]
-FeatureContainerType = Union[pd.Series]  # pyright: ignore # NOTE: May expand this.
-
 PD_SERIES_OBJECT_DTYPE_ALLOWED_TYPES = (str,)
 
 FEATURE_DTYPE_MAP: Mapping[FeatureType, Tuple[type, ...]] = {
-    FeatureType.NUMERIC: (float, int),
-    FeatureType.CATEGORICAL: (int, str),  # NOTE: Must match CategoricalDtype.
+    FeatureType.NUMERIC: T_NumericDtype_AsTuple,
+    FeatureType.CATEGORICAL: T_CategoricalDtype_AsTuple,
     # TODO: Think - should we perhaps allow float for CATEGORICAL?
 }
 
 
-def _infer_dtype(data: FeatureContainerType) -> type:
+def _infer_dtype(data: T_FeatureContainer) -> type:
     if data.dtype != object:
         return python_type_from_np_pd_dtype(data.dtype)
     else:
@@ -45,13 +44,13 @@ def _isinstance_compat_np_pd_dtypes(o: Any, _type: type) -> bool:
     return issubclass(python_type_from_np_pd_dtype(type(o)), python_type_from_np_pd_dtype(_type))
 
 
-def _infer_categories(data: FeatureContainerType, dtype: type) -> Sequence[CategoricalDtype]:
+def _infer_categories(data: T_FeatureContainer, dtype: type) -> Sequence[T_CategoricalDtype]:
     # TODO: Maybe raise NotImplementedError for unknown dtypes rather than falling back to list(unique)
     # TODO: Maybe trigger a warning when "too many" categories.
     unique = data.unique()
     if unique.dtype in NP_EQUIVALENT_TYPES_MAP:
         assert NP_EQUIVALENT_TYPES_MAP[unique.dtype] == dtype
-        result: Sequence[CategoricalDtype] = [NP_EQUIVALENT_TYPES_MAP[unique.dtype](x) for x in unique]
+        result: Sequence[T_CategoricalDtype] = [NP_EQUIVALENT_TYPES_MAP[unique.dtype](x) for x in unique]
     else:
         result = list(unique)
     return result
@@ -63,7 +62,7 @@ def _infer_categories(data: FeatureContainerType, dtype: type) -> Sequence[Categ
 class Feature:
     def __init__(
         self,
-        data: FeatureContainerType,
+        data: T_FeatureContainer,
         feature_type: FeatureType,
         infer_dtype: bool = True,
         dtype: Optional[type] = None,
@@ -92,16 +91,20 @@ class Feature:
 
         self.feature_type: FeatureType = feature_type
         self.dtype: type = dtype
-        self._data: FeatureContainerType = data
+        self._data: T_FeatureContainer = data
 
         self._validate()
 
     @property
-    def data(self) -> FeatureContainerType:
+    def numeric_compatible(self) -> bool:
+        return self.feature_type == FeatureType.NUMERIC
+
+    @property
+    def data(self) -> T_FeatureContainer:
         return self._data
 
     @data.setter
-    def data(self, value: FeatureContainerType):
+    def data(self, value: T_FeatureContainer):
         self._data = value
         self._validate()
 
@@ -136,11 +139,11 @@ class Feature:
 class CategoricalFeature(Feature):
     def __init__(
         self,
-        data: FeatureContainerType,
+        data: T_FeatureContainer,
         infer_dtype: bool = True,
         dtype: Optional[type] = None,
         infer_categories: bool = True,
-        categories: Optional[Sequence[CategoricalDtype]] = None,
+        categories: Optional[Sequence[T_CategoricalDtype]] = None,
     ) -> None:
         self._init_as_categorical_feature = True
         super().__init__(data=data, feature_type=FeatureType.CATEGORICAL, infer_dtype=infer_dtype, dtype=dtype)
@@ -156,21 +159,25 @@ class CategoricalFeature(Feature):
 
         self._validate()
 
-    def _process_categories_input(self, value: Sequence[CategoricalDtype]) -> Sequence[CategoricalDtype]:
+    def _process_categories_input(self, value: Sequence[T_CategoricalDtype]) -> Sequence[T_CategoricalDtype]:
         if any(not _isinstance_compat_np_pd_dtypes(x, self.dtype) for x in value):
             raise TypeError(f"The elements of categories must all be of type {self.dtype}")
         return tuple(sorted(set(value)))
 
     @property
-    def categories(self) -> Sequence[CategoricalDtype]:
+    def numeric_compatible(self) -> bool:
+        return self.dtype in (float, int)
+
+    @property
+    def categories(self) -> Sequence[T_CategoricalDtype]:
         return self._categories
 
     @categories.setter
-    def categories(self, value: Sequence[CategoricalDtype]):
-        self._categories: Sequence[CategoricalDtype] = self._process_categories_input(value)
+    def categories(self, value: Sequence[T_CategoricalDtype]):
+        self._categories: Sequence[T_CategoricalDtype] = self._process_categories_input(value)
         self._validate()
 
-    def update_data_and_categories(self, data: FeatureContainerType, categories: Sequence[CategoricalDtype]) -> None:
+    def update_data_and_categories(self, data: T_FeatureContainer, categories: Sequence[T_CategoricalDtype]) -> None:
         self._categories = self._process_categories_input(categories)
         self._data = data
         self._validate()
@@ -215,7 +222,7 @@ class FeatureCreatorABC(ABC):
 
 
 def _rule_auto_determine_categorical_feature(
-    max_categories_frac: float, max_categories_count: int, data: FeatureContainerType
+    max_categories_frac: float, max_categories_count: int, data: T_FeatureContainer
 ) -> bool:
     # TODO: This function could perhaps be made smarter.
 
@@ -248,7 +255,7 @@ def _rule_auto_determine_categorical_feature(
 class FeatureCreator(FeatureCreatorABC):
     @staticmethod
     def auto_create_feature_from_data(  # type: ignore # pylint: disable=arguments-differ
-        data: FeatureContainerType, max_categories_frac: float = 0.2, max_categories_count: int = 100
+        data: T_FeatureContainer, max_categories_frac: float = 0.2, max_categories_count: int = 100
     ) -> Feature:
         if _rule_auto_determine_categorical_feature(max_categories_frac, max_categories_count, data):
             # Assume categorical feature if [<= max_num_categories] and [not each element a different category].

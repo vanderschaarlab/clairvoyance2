@@ -1,146 +1,78 @@
-from typing import Any, Dict, Mapping, NamedTuple, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Mapping, NamedTuple, Optional, Sequence
 
-import numpy as np
 import torch
 import torch.nn as nn
-from torch.nn.utils.rnn import pack_padded_sequence, pad_packed_sequence
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 
-from ..data import DEFAULT_PADDING_INDICATOR, Dataset, TimeSeries
-from ..interface import PredictorModel, TDefaultParams, THorizon, TParams
+from ..components.torch.common import OPTIM_MAP
+from ..components.torch.interfaces import CustomizableLossModelBase
+from ..components.torch.rnn import RecurrentFFNet, mask_and_reshape
+from ..data import DEFAULT_PADDING_INDICATOR, Dataset
+from ..interface import (
+    Horizon,
+    HorizonType,
+    NStepAheadHorizon,
+    PredictorModel,
+    TDefaultParams,
+    TParams,
+)
 from ..interface.requirements import (
     DatasetRequirements,
     PredictionRequirements,
-    PredictionTarget,
-    PredictionTask,
+    PredictionTargetType,
+    PredictionTaskType,
     Requirements,
 )
-from ..utils.converters import to_torch_dataset
-from ..utils.dev import NEEDED, raise_not_implemented
-
-RNNClass = Union[Type[nn.RNN], Type[nn.LSTM], Type[nn.GRU]]
-RNNHidden = Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]
-
-RNN_CLASS_MAP: Mapping[str, RNNClass] = {"RNN": nn.RNN, "LSTM": nn.LSTM, "GRU": nn.GRU}
-
-OPTIM_MAP: Mapping[str, Type[torch.optim.Optimizer]] = {
-    "Adam": torch.optim.Adam,
-    "SGD": torch.optim.SGD,
-    # TODO: Allow more.
-}
+from ..interface.saving import SavableTorchModelMixin
+from ..utils import tensor_like as tl
+from ..utils.array_manipulation import compute_deltas, n_step_shifted
+from ..utils.dev import NEEDED
 
 _DEBUG = False
 
 
-class _RecurrentModule(nn.Module):
-    def __init__(
-        self,
-        rnn_class: RNNClass,
-        input_size: int,
-        hidden_size: int,
-        nonlinearity: Optional[str],
-        num_layers: int,
-        bias: bool,
-        dropout: float,
-        bidirectional: bool,
-        proj_size: Optional[int],
-    ) -> None:
-        super().__init__()
-
-        kwargs: Dict[str, Any] = dict(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            bias=bias,
-            batch_first=True,  # NOTE: We adopt batch first convention.
-            dropout=dropout,
-            bidirectional=bidirectional,
-        )
-        if rnn_class == nn.RNN:
-            kwargs["nonlinearity"] = nonlinearity
-        if rnn_class == nn.LSTM:
-            kwargs["proj_size"] = proj_size
-
-        self.rnn = rnn_class(**kwargs)
-
-    def forward(self, x: torch.Tensor, h: Optional[RNNHidden]) -> Tuple[torch.Tensor, RNNHidden]:
-        if h is not None:
-            rnn_out, h_out = self.rnn(x, h)
-        else:
-            rnn_out, h_out = self.rnn(x)
-        return rnn_out, h_out
-
-
 class _DefaultParams(NamedTuple):
-    rnn_model_str: str
-    hidden_size: int
-    num_layers: int
-    bias: bool
-    dropout: float
-    bidirectional: bool
-    nonlinearity: Optional[str]
-    proj_size: Optional[int]
-    max_len: Optional[int]
-    device_str: str
-    optimizer_str: str
-    optimizer_kwargs: Mapping[str, Any]
-    batch_size: int
-    epochs: int
+    rnn_type: str = "LSTM"
+    hidden_size: int = 100
+    num_layers: int = 1
+    bias: bool = True
+    dropout: float = 0.0
+    bidirectional: bool = False
+    nonlinearity: Optional[str] = None
+    proj_size: Optional[int] = None
+    max_len: Optional[int] = None
+    device_str: str = "cpu"
+    optimizer_str: str = "Adam"
+    optimizer_kwargs: Mapping[str, Any] = dict(lr=0.01, weight_decay=1e-5)
+    batch_size: int = 32
+    epochs: int = 100
+    use_past_targets: bool = True
+    ff_hidden_dims: Sequence[int] = []
+    ff_out_activation: Optional[str] = None
+    padding_indicator: float = DEFAULT_PADDING_INDICATOR
 
 
-class RecurrentPredictor(PredictorModel):
-    requirements: Requirements = Requirements(
-        dataset_requirements=DatasetRequirements(
-            requires_time_series_samples_regular=True,
-            requires_time_series_index_numeric=True,
-            requires_no_missing_data=True,
-        ),
-        prediction_requirements=PredictionRequirements(
-            task=PredictionTask.REGRESSION,
-            target=PredictionTarget.TIME_SERIES,
-        ),
-    )
-    DEFAULT_PARAMS: TDefaultParams = _DefaultParams(
-        rnn_model_str="LSTM",
-        hidden_size=100,
-        num_layers=1,
-        bias=True,
-        dropout=0.0,
-        bidirectional=False,
-        nonlinearity=None,
-        proj_size=1,
-        max_len=None,
-        device_str="cpu",
-        optimizer_str="Adam",
-        optimizer_kwargs=dict(lr=0.01),
-        batch_size=32,
-        epochs=100,
-    )
+class RecurrentNetNStepAheadPredictorBase(CustomizableLossModelBase, SavableTorchModelMixin, PredictorModel, nn.Module):
+    requirements: Requirements
+    DEFAULT_PARAMS: TDefaultParams
 
     torch_dtype = torch.float
-    padding_value = DEFAULT_PADDING_INDICATOR
 
-    def __init__(
-        self,
-        params: Optional[TParams] = None,
-    ) -> None:
-        super().__init__(params)
+    def __init__(self, params: Optional[TParams] = None) -> None:
+        PredictorModel.__init__(self, params)
+        nn.Module.__init__(self)
 
-        if self.params.rnn_model_str != "LSTM":
-            # TODO: Need to implement others by adding a FF NN on the output (instead of inbuilt projection).
-            raise_not_implemented("Non-LSTM recurrent prediction models")
+        # Decoder RNN and corresponding predictor FF NN:
+        self.rnn_ff: Optional[RecurrentFFNet] = NEEDED
 
-        self.rnn: Optional[_RecurrentModule] = NEEDED
+        # Torch necessities:
         self.optim: Optional[torch.optim.Optimizer] = NEEDED
-        self.input_size: Optional[int] = NEEDED
-
-        self.loss_fn = nn.MSELoss()
         self.device = torch.device(self.params.device_str)
 
-    def _init_rnn(self, input_size: int) -> None:
-        self.rnn = _RecurrentModule(
-            rnn_class=RNN_CLASS_MAP[self.params.rnn_model_str],
-            input_size=input_size,
+    def _init_submodules(self) -> None:
+        self.rnn_ff = RecurrentFFNet(
+            rnn_type=self.params.rnn_type,
+            input_size=self.inferred_params.rnn_input_size,
             hidden_size=self.params.hidden_size,
             nonlinearity=self.params.nonlinearity,
             num_layers=self.params.num_layers,
@@ -148,79 +80,117 @@ class RecurrentPredictor(PredictorModel):
             dropout=self.params.dropout,
             bidirectional=self.params.bidirectional,
             proj_size=self.params.proj_size,
+            ff_out_size=self.inferred_params.ff_output_size,
+            ff_hidden_dims=self.params.ff_hidden_dims,
+            ff_out_activation=self.params.ff_out_activation,
+            ff_hidden_activations="ReLU",
         )
-        self.input_size = input_size
 
-    # TODO: Historic targets are not used, make them used (& in predict).
-    # TODO: Time step deltas are not used, make them used (& in predict).
-    def _fit(self, data: Dataset, horizon: THorizon = NEEDED) -> "RecurrentPredictor":
+    def _init_inferred_params(self, data: Dataset) -> None:
         assert data.temporal_covariates is not None
         assert data.temporal_targets is not None
-        assert horizon is not None
 
-        # Initialize the underlying RNN.
-        self.params.proj_size = data.temporal_targets.n_features  # TODO: This will change once redone properly.
-        self._init_rnn(input_size=data.temporal_covariates.n_features)
-        assert self.rnn is not None
-        assert self.input_size is not None
-        self.rnn.to(self.device, dtype=self.torch_dtype)
+        # Infer some parameters from data.
+        self.inferred_params.rnn_input_size = data.temporal_covariates.n_features + 1  # + 1 for time deltas.
+        if self.params.use_past_targets:
+            self.inferred_params.rnn_input_size += data.temporal_targets.n_features
+        self.inferred_params.ff_output_size = data.temporal_targets.n_features
 
+        if _DEBUG is True:  # pragma: no cover
+            print("Inferred rnn_input_size:", self.inferred_params.rnn_input_size)
+            print("Inferred ff_input_size:", self.inferred_params.ff_input_size)
+            print("Inferred ff_output_size:", self.inferred_params.ff_output_size)
+
+        # Inferred batch size:
+        self.inferred_params.batch_size = min(self.params.batch_size, data.n_samples)
+
+    def _init_optimizers(self):
         # Initialize optimizer.
-        self.optim = OPTIM_MAP[self.params.optimizer_str](params=self.rnn.parameters(), **self.params.optimizer_kwargs)
+        self.optim = OPTIM_MAP[self.params.optimizer_str](
+            params=self.rnn_ff.parameters(),
+            **self.params.optimizer_kwargs,
+        )
 
-        self.params.batch_size = min(self.params.batch_size, data.n_samples)
-        # NOTE: ^ Override the params if batch_size had to be changed, to accurately record the fit-time params.
+    def _prep_torch_tensors(self, data: Dataset, horizon: NStepAheadHorizon, shift: bool):
+        if TYPE_CHECKING:
+            assert data.temporal_targets is not None
+        t_cov = data.temporal_covariates.to_torch_tensor(
+            padding_indicator=self.params.padding_indicator,
+            max_len=self.params.max_len,
+            dtype=self.torch_dtype,
+            device=self.device,
+        )
+        t_cov_ti = data.temporal_covariates.to_torch_tensor_time_index(
+            padding_indicator=self.params.padding_indicator,
+            max_len=self.params.max_len,
+            dtype=self.torch_dtype,
+            device=self.device,
+        )
+        time_deltas = compute_deltas(t_cov_ti, padding_indicator=self.params.padding_indicator)
+        t_cov = torch.cat([t_cov, time_deltas], dim=-1)
+        t_targ = data.temporal_targets.to_torch_tensor(
+            padding_indicator=self.params.padding_indicator,
+            max_len=self.params.max_len,
+            dtype=self.torch_dtype,
+            device=self.device,
+        )
 
-        torch_dataset = to_torch_dataset(data, padding_indicator=self.padding_value, max_len=self.params.max_len)
-        dataloader = DataLoader(torch_dataset, batch_size=self.params.batch_size, shuffle=True)
+        if self.params.use_past_targets:
+            t_cov = torch.cat([t_targ, t_cov], dim=-1)
+        if shift:
+            t_targ, t_cov = n_step_shifted(
+                t_targ,
+                t_cov,
+                horizon.n_step,
+                padding_indicator=self.params.padding_indicator,
+            )
 
-        self.rnn.train()
+        return t_cov, t_targ
+
+    def _fit(self, data: Dataset, horizon: Optional[Horizon] = NEEDED) -> "RecurrentNetNStepAheadPredictorBase":
+        assert horizon is not None
+        assert isinstance(horizon, NStepAheadHorizon)
+
+        self._init_inferred_params(data)
+        self._init_submodules()
+        self._init_optimizers()
+
+        if TYPE_CHECKING:
+            assert self.rnn_ff is not None
+            assert self.optim is not None
+
+        # Convert the data.
+        t_cov, t_targ = self._prep_torch_tensors(data, horizon, shift=True)
+        dataloader = DataLoader(TensorDataset(t_cov, t_targ), batch_size=self.inferred_params.batch_size, shuffle=True)
+
+        self.rnn_ff.to(self.device, dtype=self.torch_dtype)
+        self.rnn_ff.train()
+
         for epoch_idx in range(self.params.epochs):
 
-            n_samples = 0.0
+            n_samples = 0
             epoch_loss = 0.0
-            for batch_idx, (t_cov, t_targ, _) in enumerate(dataloader):  # pylint: disable=unused-variable
-                n_samples += t_cov.shape[0]
-                t_cov, t_targ = t_cov.to(self.device), t_targ.to(self.device)
-
-                # TODO: Check for "too short" case.
-                x = t_cov[:, : -horizon.n_step, :]
-                y = t_targ[:, horizon.n_step :, :]
-                max_len = x.shape[1]
+            for batch_idx, (t_cov, t_targ) in enumerate(dataloader):
+                current_batch_size = t_cov.shape[0]
+                n_samples += current_batch_size
 
                 if _DEBUG is True:  # pragma: no cover
                     print("t_targ.shape", t_targ.shape)
-                    print("x.shape", x.shape)
-                    print("y.shape", y.shape)
-                    # print(x)
+                    print("x.shape", t_cov.shape)
+                    print("y.shape", t_targ.shape)
 
-                x_seq_lens = (x.detach()[:, :, 0] != self.padding_value).sum(axis=1)
-
-                if _DEBUG is True:  # pragma: no cover
-                    print("x_seq_lens.shape", x_seq_lens.shape)
-                    print("x_seq_lens", x_seq_lens)
-                    print(x_seq_lens.shape)
-                    # for idx, f in enumerate(x_seq_lens):
-                    #     y[idx, -(max_len - f) :, :] = self.padding_value
-                    # y_seq_lens = (y.detach()[:, :, 0] != self.padding_value).sum(axis=1)
-                    # print("y_seq_lens", y_seq_lens)
-
-                x = pack_padded_sequence(x, x_seq_lens, batch_first=True, enforce_sorted=False)
-                out, _ = self.rnn(x, h=None)
-                out, _ = pad_packed_sequence(
-                    out, batch_first=True, padding_value=self.padding_value, total_length=max_len
-                )
+                out, _, _ = self.rnn_ff(t_cov, h=None, padding_indicator=self.params.padding_indicator)
 
                 if _DEBUG is True:  # pragma: no cover
                     print("out.shape", out.shape)
-                    # out_seq_lens = (out.detach()[:, :, 0] != self.padding_value).sum(axis=1)
-                    # print("out_seq_lens", out_seq_lens)
 
-                # This shouldn't be necessary but just in case:
-                out[out == self.padding_value] = 0.0
-                y[y == self.padding_value] = 0.0
+                not_padding = ~tl.eq_indicator(t_targ, self.params.padding_indicator)
+                if TYPE_CHECKING:
+                    assert isinstance(not_padding, torch.BoolTensor)
+                out = mask_and_reshape(mask_selector=not_padding, tensor=out)
+                t_targ = mask_and_reshape(mask_selector=not_padding, tensor=t_targ)
 
-                loss = self.loss_fn(out, y)  # Padding values are equal, so should be fine.
+                loss = self.compute_loss(out, t_targ)
 
                 # Optimization:
                 self.optim.zero_grad()
@@ -237,77 +207,78 @@ class RecurrentPredictor(PredictorModel):
 
         return self
 
-    def _predict(self, data: Dataset, horizon: THorizon = NEEDED) -> Dataset:
-        assert data.temporal_covariates is not None
-        assert data.temporal_targets is not None
-        assert self.rnn is not None
-        assert horizon is not None
+    def _predict(self, data: Dataset, horizon: Horizon) -> Dataset:
+        if TYPE_CHECKING:
+            assert self.rnn_ff is not None
+            assert horizon is not None
+        assert isinstance(horizon, NStepAheadHorizon)
 
-        batch_size = min(self.params.batch_size, data.n_samples)
-        # NOTE: ^ Do not override the params even if batch_size had to be changed, as doesn't affect fit-time params.
+        # Convert the data.
+        t_cov, _ = self._prep_torch_tensors(data, horizon, shift=False)
 
-        torch_dataset = to_torch_dataset(data, padding_indicator=self.padding_value, max_len=self.params.max_len)
-        dataloader = DataLoader(torch_dataset, batch_size=batch_size, shuffle=False)
+        self.rnn_ff.to(self.device, dtype=self.torch_dtype)
+        self.rnn_ff.eval()
 
-        self.rnn.eval()
-        list_batches = []
         with torch.no_grad():
-            for batch_idx, (t_cov, t_targ, _) in enumerate(dataloader):  # pylint: disable=unused-variable
-                t_cov, t_targ = t_cov.to(self.device), t_targ.to(self.device)
-                x = t_cov[:, : -horizon.n_step, :]
-                max_len = x.shape[1]
-                x_seq_lens = (x.detach()[:, :, 0] != self.padding_value).sum(axis=1)
+            # NOTE: The N-step ahead output will have the n. timesteps == original data temporal targets n. timesteps.
+            # But the prediction values correspond to the n step shifted targets.
+            out, _, _ = self.rnn_ff(t_cov, h=None, padding_indicator=self.params.padding_indicator)
+            out_final = self.process_output(out)
+            out_final[tl.eq_indicator(out, self.params.padding_indicator)] = self.params.padding_indicator
 
-                x = pack_padded_sequence(x, x_seq_lens, batch_first=True, enforce_sorted=False)
-                out, _ = self.rnn(x, h=None)
-                out, _ = pad_packed_sequence(
-                    out, batch_first=True, padding_value=self.padding_value, total_length=max_len
-                )
-
-                list_batches.append(out.detach().cpu().numpy())
-
-        result = np.concatenate(list_batches).astype(float)
+        result = out_final.detach().cpu().numpy()
 
         data = data.copy()
         assert data.temporal_targets is not None
-
-        # TODO: Extract this into some kind of an helper function.
-        max_len = max(data.temporal_targets.n_timesteps_per_sample)
-        for sample_idx, sample_array in zip(data.temporal_targets.sample_indices, result):
-            if _DEBUG is True:  # pragma: no cover
-                print("sample_array\n", sample_array)
-                print("sample_array.shape:", sample_array.shape)
-
-            ts: TimeSeries = data.temporal_targets[sample_idx]
-            assert (sample_array[ts.n_timesteps :, :] == self.padding_value).all()  # Check padding is correct.
-
-            if _DEBUG is True:  # pragma: no cover
-                print("ts.n_timesteps", ts.n_timesteps)
-            is_regular, diff = ts.is_regular()
-            assert is_regular
-
-            last_index = ts.df.index[-1]
-            if _DEBUG is True:  # pragma: no cover
-                print("last_index", last_index)
-
-            # TODO: Add below checks properly.
-            # assert isinstance(last_index, (float, int))
-            # assert isinstance(diff, (float, int))
-            new_indices = [last_index + i * diff for i in range(1, horizon.n_step + 1)]  # type: ignore
-            if _DEBUG is True:  # pragma: no cover
-                print(new_indices)
-
-            ts.df = ts.df.loc[horizon.n_step :, :].copy()
-            for new_index in new_indices:
-                ts.df.loc[new_index, :] = np.nan
-
-            # Max length limit in the n-step ahead setting:
-            if len(ts.df) > max_len - horizon.n_step:
-                ts.df = ts.df.loc[: (max_len - horizon.n_step), :].copy()
-
-            ts.df[:] = sample_array[: ts.n_timesteps, :]
-            if _DEBUG is True:  # pragma: no cover
-                print("ts.df\n", ts.df)
-                print("---")
+        data.temporal_targets.update_from_array_n_step_ahead(
+            update_array_sequence=result, n_step=horizon.n_step, padding_indicator=self.params.padding_indicator
+        )
 
         return data
+
+
+class RecurrentNetNStepAheadRegressor(RecurrentNetNStepAheadPredictorBase):
+    requirements: Requirements = Requirements(
+        dataset_requirements=DatasetRequirements(
+            requires_all_numeric_features=True,
+            requires_no_missing_data=True,
+            requires_temporal_containers_have_same_time_index=True,
+        ),
+        prediction_requirements=PredictionRequirements(
+            task=PredictionTaskType.REGRESSION,  # Note.
+            target=PredictionTargetType.TIME_SERIES,
+            horizon=HorizonType.N_STEP_AHEAD,
+        ),
+    )
+    DEFAULT_PARAMS: TDefaultParams = _DefaultParams()
+
+    def process_output(self, out: torch.Tensor, **kwargs) -> torch.Tensor:
+        return out
+
+    def __init__(self, params: Optional[TParams] = None) -> None:
+        super().__init__(params)
+        self.loss_fn = nn.MSELoss()
+
+
+class RecurrentNetNStepAheadClassifier(RecurrentNetNStepAheadPredictorBase):
+    requirements: Requirements = Requirements(
+        dataset_requirements=DatasetRequirements(
+            requires_all_numeric_features=True,
+            requires_no_missing_data=True,
+            requires_temporal_containers_have_same_time_index=True,
+        ),
+        prediction_requirements=PredictionRequirements(
+            task=PredictionTaskType.CLASSIFICATION,  # Note.
+            target=PredictionTargetType.TIME_SERIES,
+            horizon=HorizonType.N_STEP_AHEAD,
+        ),
+    )
+    DEFAULT_PARAMS: TDefaultParams = _DefaultParams()
+
+    def process_output(self, out: torch.Tensor, **kwargs) -> torch.Tensor:
+        return self.softmax(out)
+
+    def __init__(self, params: Optional[TParams] = None) -> None:
+        super().__init__(params)
+        self.softmax = nn.Softmax(dim=-1)
+        self.loss_fn = nn.CrossEntropyLoss()
