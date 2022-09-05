@@ -63,11 +63,13 @@ class BaseModel(ABC):
     def check_model_requirements(self) -> None:  # pragma: no cover
         ...
 
-    def check_data_requirements_general(self, data: Dataset, **kwargs):
-        RequirementsChecker.check_data_requirements_general(self.requirements, data, **kwargs)
+    def check_data_requirements_general(self, called_at_fit_time: bool, data: Dataset, **kwargs):
+        RequirementsChecker.check_data_requirements_general(
+            called_at_fit_time=called_at_fit_time, requirements=self.requirements, data=data, **kwargs
+        )
 
     def fit(self, data: Dataset) -> "BaseModel":
-        self.check_data_requirements_general(data)
+        self.check_data_requirements_general(called_at_fit_time=True, data=data)
         result = self._fit(data)
         self._fit_called = True
         return result
@@ -103,7 +105,7 @@ class TransformerModel(BaseModel, ABC):
     def transform(self, data: Dataset) -> Dataset:
         if not self._fit_called:
             raise RuntimeError("Must call `fit` before calling `transform`")
-        self.check_data_requirements_general(data)
+        self.check_data_requirements_general(called_at_fit_time=False, data=data)
         self.check_data_requirements_transform(data)
         return self._transform(data)
 
@@ -112,7 +114,7 @@ class TransformerModel(BaseModel, ABC):
             raise NotImplementedError(f"`_inverse_transform` method was not implemented for {self.__class__.__name__}")
         if not self._fit_called:
             raise RuntimeError("Must call `fit` before calling `transform`")
-        self.check_data_requirements_general(data)
+        self.check_data_requirements_general(called_at_fit_time=False, data=data)
         self.check_data_requirements_transform(data)
         return self._inverse_transform(data)
 
@@ -143,12 +145,12 @@ class PredictorModel(BaseModel, ABC):
     def predict(self, data: Dataset, horizon: Horizon) -> TPredictOutput:
         if not self._fit_called:
             raise RuntimeError("Must call `fit` before calling `predict`")
-        self.check_data_requirements_general(data, horizon=horizon)
+        self.check_data_requirements_general(called_at_fit_time=False, data=data, horizon=horizon)
         self.check_data_requirements_predict(data, horizon=horizon)
         return self._predict(data, horizon)
 
     def fit(self, data: Dataset, horizon: Optional[Horizon] = None) -> "PredictorModel":
-        self.check_data_requirements_general(data, horizon=horizon)
+        self.check_data_requirements_general(called_at_fit_time=True, data=data, horizon=horizon)
         result = self._fit(data, horizon=horizon)
         self._fit_called = True
         return result
@@ -211,7 +213,8 @@ class TreatmentEffectsModel(PredictorModel, ABC):
             data, sample_index=sample_index, treatment_scenarios=treatment_scenarios, horizon=horizon
         )
         self.check_data_requirements_general(
-            data_processed,
+            called_at_fit_time=False,
+            data=data_processed,
             horizon=horizon,
             treatment_scenarios=treatment_scenarios_processed,
         )
@@ -224,7 +227,7 @@ class TreatmentEffectsModel(PredictorModel, ABC):
         return self._predict_counterfactuals(data_processed, sample_index, treatment_scenarios_processed, horizon)
 
     def fit(self, data: Dataset, horizon: Optional[Horizon] = None) -> "TreatmentEffectsModel":
-        self.check_data_requirements_general(data, horizon=horizon)
+        self.check_data_requirements_general(called_at_fit_time=True, data=data, horizon=horizon)
         result = self._fit(data, horizon=horizon)
         self._fit_called = True
         return result

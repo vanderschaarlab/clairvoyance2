@@ -337,8 +337,6 @@ class TestIntegration:
             ts_pre, ts_post, count = split_time_series.split_at_each_step(
                 ts, min_pre_len=1, min_post_len=1, repeat_last_pre_step=True
             )
-            print(ts_pre)
-            print(ts_post)
 
             ts_pre_expected = [pd.DataFrame({"a": [1], "b": [1.1]}, index=[0])]
             ts_post_expected = [pd.DataFrame({"a": [1], "b": [1.1]}, index=[0])]

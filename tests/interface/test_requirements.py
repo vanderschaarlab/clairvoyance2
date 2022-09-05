@@ -87,7 +87,9 @@ class TestDataRequirements:
             )
 
             with expectation as excinfo:
-                RequirementsChecker.check_data_requirements_general(requirements, data)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data
+                )
             if excinfo is not None:
                 assert "requires static samples" in str(excinfo.value).lower()
 
@@ -138,8 +140,9 @@ class TestDataRequirements:
 
             with expectation as excinfo:
                 RequirementsChecker.check_data_requirements_general(
-                    requirements,
-                    MockDataset(temporal_covariates=t_cov, temporal_targets=t_targ, temporal_treatments=t_treat),
+                    called_at_fit_time=True,
+                    requirements=requirements,
+                    data=MockDataset(temporal_covariates=t_cov, temporal_targets=t_targ, temporal_treatments=t_treat),
                 )
             if excinfo is not None:
                 assert "requires regular timeseries" in str(excinfo.value).lower()
@@ -195,8 +198,9 @@ class TestDataRequirements:
 
             with expectation as excinfo:
                 RequirementsChecker.check_data_requirements_general(
-                    requirements,
-                    MockDataset(temporal_covariates=t_cov, temporal_targets=t_targ, temporal_treatments=t_treat),
+                    called_at_fit_time=True,
+                    requirements=requirements,
+                    data=MockDataset(temporal_covariates=t_cov, temporal_targets=t_targ, temporal_treatments=t_treat),
                 )
             if excinfo is not None:
                 assert "requires aligned timeseries" in str(excinfo.value).lower()
@@ -278,8 +282,9 @@ class TestDataRequirements:
 
             with expectation as excinfo:
                 RequirementsChecker.check_data_requirements_general(
-                    requirements,
-                    MockDataset(
+                    called_at_fit_time=True,
+                    requirements=requirements,
+                    data=MockDataset(
                         temporal_covariates=mock_t_cov, temporal_targets=mock_t_targ, temporal_treatments=mock_t_treat
                     ),
                 )
@@ -365,8 +370,9 @@ class TestDataRequirements:
 
             with expectation as excinfo:
                 RequirementsChecker.check_data_requirements_general(
-                    requirements,
-                    MockDataset(
+                    called_at_fit_time=True,
+                    requirements=requirements,
+                    data=MockDataset(
                         temporal_covariates=data_temporal_covariates,
                         static_covariates=data_static_covariates,
                         temporal_targets=data_temporal_targets,
@@ -397,7 +403,9 @@ class TestDataRequirements:
 
             with expectation as excinfo:
                 RequirementsChecker.check_data_requirements_general(
-                    requirements, MockDataset(temporal_covariates=data_temporal_covariates_samples)
+                    called_at_fit_time=True,
+                    requirements=requirements,
+                    data=MockDataset(temporal_covariates=data_temporal_covariates_samples),
                 )
             if excinfo is not None:
                 assert "temporal covariates had missing data" in str(excinfo.value).lower()
@@ -420,7 +428,9 @@ class TestDataRequirements:
             )
 
             with pytest.raises(RuntimeError) as excinfo:
-                RequirementsChecker.check_data_requirements_general(requirements=requirements, data=data)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data
+                )
             assert value_type.name in str(excinfo.value)
 
         @pytest.mark.parametrize(
@@ -440,7 +450,9 @@ class TestDataRequirements:
             )
 
             with pytest.raises(RuntimeError) as excinfo:
-                RequirementsChecker.check_data_requirements_general(requirements=requirements, data=data)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data
+                )
             assert value_type.name in str(excinfo.value)
 
         @pytest.mark.parametrize(
@@ -461,7 +473,9 @@ class TestDataRequirements:
             )
 
             with pytest.raises(RuntimeError) as excinfo:
-                RequirementsChecker.check_data_requirements_general(requirements=requirements, data=data)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data
+                )
             assert value_type.name in str(excinfo.value)
 
         @pytest.mark.parametrize(
@@ -482,7 +496,9 @@ class TestDataRequirements:
             )
 
             with pytest.raises(RuntimeError) as excinfo:
-                RequirementsChecker.check_data_requirements_general(requirements=requirements, data=data)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data
+                )
             assert value_type.name in str(excinfo.value)
 
         class TestWhenPredictionRequirementsProvided:
@@ -499,7 +515,9 @@ class TestDataRequirements:
                 )
 
                 data = MockDataset(temporal_covariates=Mock())
-                RequirementsChecker.check_data_requirements_general(requirements, data)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data
+                )
 
                 mock_call.assert_called_once_with(
                     called_at_fit_time=True, requirements=requirements, data=data, horizon=None
@@ -519,7 +537,9 @@ class TestDataRequirements:
                 horizon = Mock()
 
                 data = MockDataset(temporal_covariates=Mock())
-                RequirementsChecker.check_data_requirements_general(requirements, data, horizon=horizon)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data, horizon=horizon
+                )
 
                 mock_call.assert_called_once_with(
                     called_at_fit_time=True, requirements=requirements, data=data, horizon=horizon
@@ -546,7 +566,9 @@ class TestDataRequirements:
                 )
 
                 data = MockDataset(temporal_covariates=Mock())
-                RequirementsChecker.check_data_requirements_general(requirements, data)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data
+                )
 
                 mock_call.assert_called_once_with(
                     called_at_fit_time=True,
@@ -578,7 +600,9 @@ class TestDataRequirements:
                 horizon = Mock()
 
                 data = MockDataset(temporal_covariates=Mock())
-                RequirementsChecker.check_data_requirements_general(requirements, data, horizon=horizon)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=requirements, data=data, horizon=horizon
+                )
 
                 mock_call.assert_called_once_with(
                     called_at_fit_time=True,
@@ -712,8 +736,9 @@ class TestDataRequirements:
 
                 with expectation as excinfo:
                     RequirementsChecker.check_data_requirements_general(
-                        requirements,
-                        data,
+                        called_at_fit_time=False,
+                        requirements=requirements,
+                        data=data,
                         horizon=horizon,
                     )
                 if excinfo is not None:
@@ -847,7 +872,9 @@ class TestIntegration:
             )
 
             with pytest.raises(RuntimeError) as excinfo:
-                RequirementsChecker.check_data_requirements_general(req, data)
+                RequirementsChecker.check_data_requirements_general(
+                    called_at_fit_time=True, requirements=req, data=data
+                )
             assert (
                 "same time index" in str(excinfo.value)
                 and expect_str_1 in str(excinfo.value)

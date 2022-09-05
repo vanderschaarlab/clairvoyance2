@@ -52,8 +52,6 @@ class Feature:
 
     @property
     def numeric_compatible(self) -> bool:
-        print(self.inferred_dtype)
-        print(T_NumericDtype_AsTuple)
         return self.inferred_dtype in T_NumericDtype_AsTuple
 
     @property

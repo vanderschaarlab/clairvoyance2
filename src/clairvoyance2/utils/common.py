@@ -83,7 +83,6 @@ def rolling_window(
         else:
             slices += [(x, x + window) for x in range(len_ - window + 1)]
         slices = list(sorted(set(slices)))
-        print(slices)
     else:
         slices = [(x, x + window) for x in range(len_ - window + 1)]
     return tuple([sequence[s0:s1] for s0, s1 in slices])

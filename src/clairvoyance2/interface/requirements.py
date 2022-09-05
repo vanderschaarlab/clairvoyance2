@@ -128,14 +128,15 @@ class RequirementsChecker:
                     "Dataset must contain temporal targets in this case but did not",
                 )
 
-            if requirements.prediction_requirements.min_timesteps_target_when_fit is not None:
-                RequirementsChecker._check_min_timesteps(
-                    min_timesteps=requirements.prediction_requirements.min_timesteps_target_when_fit,
-                    container=data.temporal_targets,
-                    container_name="temporal_targets",
-                    preface="Prediction requirement: minimum number of timesteps at fit-time,",
-                )
-            if not called_at_fit_time:
+            if called_at_fit_time:
+                if requirements.prediction_requirements.min_timesteps_target_when_fit is not None:
+                    RequirementsChecker._check_min_timesteps(
+                        min_timesteps=requirements.prediction_requirements.min_timesteps_target_when_fit,
+                        container=data.temporal_targets,
+                        container_name="temporal_targets",
+                        preface="Prediction requirement: minimum number of timesteps at fit-time,",
+                    )
+            else:
                 RequirementsChecker._check_min_timesteps(
                     min_timesteps=requirements.prediction_requirements.min_timesteps_target_when_predict,
                     container=data.temporal_targets,
@@ -203,13 +204,14 @@ class RequirementsChecker:
                     "Dataset must contain temporal treatments in this case but did not",
                 )
 
-            RequirementsChecker._check_min_timesteps(
-                min_timesteps=requirements.treatment_effects_requirements.min_timesteps_treatment_when_fit,
-                container=data.temporal_treatments,
-                container_name="temporal_treatments",
-                preface="Treatment effects requirement: minimum number of timesteps at fit-time,",
-            )
-            if not called_at_fit_time:
+            if called_at_fit_time:
+                RequirementsChecker._check_min_timesteps(
+                    min_timesteps=requirements.treatment_effects_requirements.min_timesteps_treatment_when_fit,
+                    container=data.temporal_treatments,
+                    container_name="temporal_treatments",
+                    preface="Treatment effects requirement: minimum number of timesteps at fit-time,",
+                )
+            else:
                 RequirementsChecker._check_min_timesteps(
                     min_timesteps=requirements.treatment_effects_requirements.min_timesteps_treatment_when_predict_counterfactual,
                     container=data.temporal_targets,
@@ -229,7 +231,7 @@ class RequirementsChecker:
                     assert ts.all_features_numeric and ts.all_features_binary
 
     @staticmethod
-    def check_data_requirements_general(requirements: Requirements, data: Dataset, **kwargs):
+    def check_data_requirements_general(called_at_fit_time: bool, requirements: Requirements, data: Dataset, **kwargs):
         # General data requirements:
         if requirements.dataset_requirements.requires_static_covariates_present:
             if data.static_covariates is None:
@@ -314,14 +316,14 @@ class RequirementsChecker:
         # Prediction-specific data requirements:
         if requirements.prediction_requirements is not None:
             RequirementsChecker._check_data_requirements_predict(
-                called_at_fit_time=True, requirements=requirements, data=data, horizon=horizon, **kwargs
+                called_at_fit_time=called_at_fit_time, requirements=requirements, data=data, horizon=horizon, **kwargs
             )
 
         # Treatment effects -specific data requirements:
         if requirements.treatment_effects_requirements is not None:
             # DataStructure.TIME_SERIES:
             RequirementsChecker._check_data_requirements_predict_counterfactuals(
-                called_at_fit_time=True,
+                called_at_fit_time=called_at_fit_time,
                 requirements=requirements,
                 data=data,
                 sample_index=sample_index,

@@ -245,8 +245,6 @@ class TestIntegration:
                 static_covariates=static_covariates,
             )
 
-            print(scaler.params)
-
             data_transformed = scaler.fit_transform(data)
             data_inverse_transformed = scaler.inverse_transform(data_transformed)
 

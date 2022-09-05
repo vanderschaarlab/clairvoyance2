@@ -393,6 +393,5 @@ class TestIntegration:
         def test_success(self, tensor, expected_out, padding_indicator):
             for t in (tensor, torch.tensor(tensor)):  # Check both np.ndarray and torch.tensor cases.
                 out = compute_deltas(t, padding_indicator=padding_indicator)
-                print(type(out))
                 assert out.shape == t.shape
                 assert are_equal(out, expected_out)
