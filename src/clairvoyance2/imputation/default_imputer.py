@@ -2,7 +2,7 @@ import pandas as pd
 
 from ..data import Dataset, TimeSeries, TimeSeriesSamples
 from ..interface import TransformerModel
-from ..interface.requirements import DatasetRequirements, Requirements
+from ..interface.requirements import DatasetRequirements, DataValueOpts, Requirements
 
 # pylint: disable=attribute-defined-outside-init
 # ^ Expected, as .fit() sets parameters.
@@ -12,7 +12,7 @@ from ..interface.requirements import DatasetRequirements, Requirements
 # NOTE: This imputer does nothing to temporal *targets*, only affects temporal *covariates*.
 class DefaultImputerTC(TransformerModel):
     requirements: Requirements = Requirements(
-        dataset_requirements=DatasetRequirements(requires_all_numeric_features=True),
+        dataset_requirements=DatasetRequirements(temporal_covariates_value_type=DataValueOpts.NUMERIC),
         prediction_requirements=None,  # Transformers do not have prediction requirements.
     )
 

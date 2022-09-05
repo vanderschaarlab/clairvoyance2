@@ -1,12 +1,15 @@
 from abc import ABC
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING, Optional, Sequence
 
+import numpy as np
 import pandas as pd
+import torch
 
 from ..data import Dataset
 from ..data.constants import (
+    DEFAULT_PADDING_INDICATOR,
     T_NumericDtype_AsTuple,
     T_TSIndexClass,
     T_TSIndexClass_AsTuple,
@@ -17,16 +20,16 @@ from ..utils.common import python_type_from_np_pd_dtype
 from ..utils.dev import raise_not_implemented
 
 
-class HorizonType(Enum):
+class HorizonOpts(Enum):
     N_STEP_AHEAD = auto()
     TIME_INDEX = auto()
     # Other ideas: N_STEP_FORECAST = auto()
 
 
 class Horizon(ABC):
-    horizon_type: HorizonType
+    horizon_type: HorizonOpts
 
-    def __init__(self, horizon_type: HorizonType) -> None:
+    def __init__(self, horizon_type: HorizonOpts) -> None:
         self.horizon_type = horizon_type
 
 
@@ -35,7 +38,7 @@ class NStepAheadHorizon(Horizon):
     n_step: int
 
     def __init__(self, n_step: int) -> None:
-        super().__init__(horizon_type=HorizonType.N_STEP_AHEAD)
+        super().__init__(horizon_type=HorizonOpts.N_STEP_AHEAD)
         if n_step <= 0:
             raise ValueError("N step ahead horizon must be > 0.")
         self.n_step = n_step
@@ -51,7 +54,7 @@ class TimeIndexHorizon(Horizon):
     time_index_sequence: TimeIndexSequence  # TODO: Perhaps also allow for just T_TSIndexClass.
 
     def __init__(self, time_index_sequence: TimeIndexSequence) -> None:
-        super().__init__(horizon_type=HorizonType.TIME_INDEX)
+        super().__init__(horizon_type=HorizonOpts.TIME_INDEX)
         for ti in time_index_sequence:
             if not isinstance(ti, T_TSIndexClass_AsTuple):
                 raise ValueError(
@@ -62,7 +65,9 @@ class TimeIndexHorizon(Horizon):
         self.time_index_sequence = time_index_sequence
 
     @classmethod
-    def from_dataset(cls, data: Dataset, forecast_n_steps: int, time_delta: T_TSIndexDtype = 1) -> "TimeIndexHorizon":
+    def future_horizon_from_dataset(
+        cls, data: Dataset, forecast_n_future_steps: int, time_delta: T_TSIndexDtype = 1
+    ) -> "TimeIndexHorizon":
         targets = data.temporal_targets
         if targets is None:
             raise ValueError("Temporal targets must be set but was None")
@@ -88,6 +93,28 @@ class TimeIndexHorizon(Horizon):
             if TYPE_CHECKING:
                 assert isinstance(time_delta, (int, float))
                 assert isinstance(start, (int, float))
-            seq = [start + time_delta * x for x in range(forecast_n_steps)]
+            seq = [start + time_delta * x for x in range(forecast_n_future_steps)]
             indices.append(pd.Index(seq))
         return cls(time_index_sequence=indices)
+
+    def to_numpy_time_series(self, padding_indicator: float = DEFAULT_PADDING_INDICATOR, max_len: Optional[int] = None):
+        n_samples = len(self.time_index_sequence)
+        if max_len is None:
+            n_timesteps = max(len(ti) for ti in self.time_index_sequence)
+        else:
+            n_timesteps = max_len
+        array = np.full(
+            shape=(n_samples, n_timesteps, 1),
+            fill_value=padding_indicator,
+        )
+        for idx, ti in enumerate(self.time_index_sequence):
+            array[idx, : len(ti), 0] = np.asarray(ti.values)
+        return array
+
+    def to_torch_time_series(
+        self,
+        padding_indicator: float = DEFAULT_PADDING_INDICATOR,
+        max_len: Optional[int] = None,
+        **torch_tensor_kwargs,
+    ):
+        return torch.tensor(self.to_numpy_time_series(padding_indicator, max_len), **torch_tensor_kwargs)

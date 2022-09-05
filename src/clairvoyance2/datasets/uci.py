@@ -185,7 +185,7 @@ class UCIDiabetesRetriever(DatasetRetriever):
         for file_id in self._get_file_id_range():
             cache_path = os.path.join(self.dataset_cache_dir, self._get_cache_file_name(file_id))
             list_dfs.append(pd.read_pickle(cache_path))
-        temporal_covariates = TimeSeriesSamples(data=list_dfs, sample_indices=None, categorical_features=None)
+        temporal_covariates = TimeSeriesSamples(data=list_dfs, sample_indices=None)
         return Dataset(temporal_covariates)
 
     def cache(self, data: Dataset) -> None:
@@ -200,7 +200,7 @@ class UCIDiabetesRetriever(DatasetRetriever):
         for file_id in self._get_file_id_range():
             df = self.process_individual_file(os.path.join(self.dataset_extracted_dir, f"data-{file_id:02}"))
             list_dfs.append(df)
-        temporal_covariates = TimeSeriesSamples(data=list_dfs, sample_indices=None, categorical_features=None)
+        temporal_covariates = TimeSeriesSamples(data=list_dfs, sample_indices=None)
         return Dataset(temporal_covariates)
 
 

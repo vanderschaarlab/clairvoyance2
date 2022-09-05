@@ -56,7 +56,7 @@ class TestBaseModel:
         # Arrange:
         mock_check_data_requirements = Mock()
         monkeypatch.setattr(
-            "clairvoyance2.interface.model.RequirementsChecker.check_data_requirements",
+            "clairvoyance2.interface.model.RequirementsChecker.check_data_requirements_general",
             mock_check_data_requirements,
             raising=True,
         )
@@ -280,7 +280,7 @@ class TestTransformerModel:
         # Arrange:
         mock_check_data_requirements = Mock()
         monkeypatch.setattr(
-            "clairvoyance2.interface.model.RequirementsChecker.check_data_requirements",
+            "clairvoyance2.interface.model.RequirementsChecker.check_data_requirements_general",
             mock_check_data_requirements,
             raising=True,
         )
@@ -338,7 +338,7 @@ class TestTransformerModel:
         # Arrange:
         mock_check_data_requirements = Mock()
         monkeypatch.setattr(
-            "clairvoyance2.interface.model.RequirementsChecker.check_data_requirements",
+            "clairvoyance2.interface.model.RequirementsChecker.check_data_requirements_general",
             mock_check_data_requirements,
             raising=True,
         )
@@ -372,7 +372,7 @@ class TestTransformerModel:
         # Arrange:
         mock_check_data_requirements = Mock()
         monkeypatch.setattr(
-            "clairvoyance2.interface.model.RequirementsChecker.check_data_requirements",
+            "clairvoyance2.interface.model.RequirementsChecker.check_data_requirements_general",
             mock_check_data_requirements,
             raising=True,
         )

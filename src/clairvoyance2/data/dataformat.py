@@ -4,13 +4,14 @@ from typing import Any, Iterator, List, Optional, Sequence, Tuple, TypeVar, Unio
 import numpy as np
 import pandas as pd
 
+from ..utils.common import empty_df_like
 from ..utils.dev import raise_not_implemented
 from . import df_constraints as dfc
 from .constants import (
     DEFAULT_PADDING_INDICATOR,
-    T_CategoricalDef_Arg,
     T_ContainerInitializable,
     T_ContainerInitializable_AsTuple,
+    T_ElementsObjectType_AsTuple,
     T_FeatureIndexClass_AsTuple,
     T_FeatureIndexDtype,
     T_FeatureIndexDtype_AsTuple,
@@ -49,7 +50,7 @@ with warnings.catch_warnings():
     _DF_CONSTRAINTS_FEATURES = dfc.IndexConstraints(
         types=T_FeatureIndexClass_AsTuple,
         dtypes=dfc.cast_to_index_constraints_dtypes(T_FeatureIndexDtype_AsTuple),
-        dtype_object_constrain_types=(str,),
+        dtype_object_constrain_types=T_ElementsObjectType_AsTuple,
         enforce_monotonic_increasing=False,
         enforce_unique=True,
         enforce_not_multi_index=True,
@@ -73,7 +74,7 @@ with warnings.catch_warnings():
 
 _DF_CONSTRAINT_DATAPOINTS = dfc.ElementConstraints(
     dtypes=(float, int, object),  # NOTE: Others candidates: bool, other numeric types (like np.int32).
-    dtype_object_constrain_types=(str,),  # NOTE: could expand to broader "categorical" types.
+    dtype_object_constrain_types=T_ElementsObjectType_AsTuple,  # NOTE: could expand to broader "categorical" types.
     enforce_homogenous_type_per_column=True,
 )
 
@@ -96,13 +97,11 @@ class TimeSeries(
     def __init__(
         self,
         data: T_ContainerInitializable,
-        categorical_features: T_CategoricalDef_Arg = tuple(),
         missing_indicator: TMissingIndicator = np.nan,
     ) -> None:
         # TODO: More ways to initialize features?
         BaseContainer.__init__(self, data=data)
         HasMissingMixin.__init__(self, missing_indicator=missing_indicator)
-        self.set_categorical_def(categorical_features)
         self.validate()
 
     # --- Sequence Interface ---
@@ -112,8 +111,8 @@ class TimeSeries(
         return self.new_like(like=self, data=new_data)
 
     def _getitem_column(self, column_key):
-        new_data, new_categorical_def = self._getitem_column_helper(column_key)
-        return self.new_like(like=self, data=new_data, categorical_features=new_categorical_def)
+        new_data = self._getitem_column_helper(column_key)
+        return self.new_like(like=self, data=new_data)
 
     def __getitem__(self, key) -> "TimeSeries":
         return super().__getitem__(key)
@@ -178,10 +177,14 @@ class TimeSeries(
 
     @staticmethod
     def new_like(like: "TimeSeries", **kwargs) -> "TimeSeries":
-        kwargs = SupportsNewLike.process_kwargs(
-            kwargs, dict(categorical_features=like.categorical_def, missing_indicator=like.missing_indicator)
-        )
+        kwargs = SupportsNewLike.process_kwargs(kwargs, dict(missing_indicator=like.missing_indicator))
         return TimeSeries(**kwargs)  # type: ignore  # Mypy complains about kwargs but it's fine.
+
+    @staticmethod
+    def new_empty_like(like: "TimeSeries", **kwargs) -> "TimeSeries":
+        new = TimeSeries.new_like(like=like, data=like.df, **kwargs)
+        new.df = empty_df_like(new.df)
+        return new
 
 
 # Abbreviation: TSS = TimeSeriesSamples
@@ -207,7 +210,6 @@ class TimeSeriesSamples(
         self,
         data: Sequence[T_TSS_ContainerInitializable],
         sample_indices: Optional[T_SampleIndex_Compatible] = None,
-        categorical_features: Optional[T_CategoricalDef_Arg] = None,
         missing_indicator: TMissingIndicator = np.nan,
     ) -> None:
         if len(data) == 0:
@@ -220,21 +222,11 @@ class TimeSeriesSamples(
             if isinstance(container, TimeSeries):
                 if _first_ts is None:
                     _first_ts = container  # Take features from first TS.
-                if categorical_features is None:
-                    categorical_features_ready: T_CategoricalDef_Arg = _first_ts.categorical_def
-                else:
-                    categorical_features_ready = categorical_features
-                container.set_categorical_def(categorical_features_ready)
                 _list_data.append(container)
             elif isinstance(container, T_ContainerInitializable_AsTuple):
-                if categorical_features is None:
-                    categorical_features_ready = tuple()
-                else:
-                    categorical_features_ready = categorical_features
                 _list_data.append(
                     TimeSeries(
                         data=container,
-                        categorical_features=categorical_features_ready,
                         missing_indicator=missing_indicator,
                     )
                 )
@@ -254,7 +246,6 @@ class TimeSeriesSamples(
 
         BaseContainer.__init__(self, self._data)
         HasMissingMixin.__init__(self, missing_indicator=missing_indicator)
-        self.set_categorical_def(categorical_features_ready)
         # TODO: Check all nested dataframes definitely have same features?
 
         self.validate()
@@ -286,6 +277,7 @@ class TimeSeriesSamples(
                 for c in self._data.columns:
                     self._data.at[idx, c] = ts.df[c]
 
+    @property
     def _df_for_features(self) -> pd.DataFrame:
         return self._internal[0].df
 
@@ -322,8 +314,7 @@ class TimeSeriesSamples(
         new_data = [ts.df.loc[:, column_key] for ts in self]
         if isinstance(new_data[0], pd.Series):
             new_data = [pd.DataFrame(data=ts.df.loc[:, column_key], columns=[column_key]) for ts in self]
-        new_categorical_def = {col: val for col, val in self.categorical_def.items() if col in new_data[0].columns}
-        return self.new_like(like=self, data=new_data, categorical_features=new_categorical_def)
+        return self.new_like(like=self, data=new_data)
 
     def __getitem__(self, key) -> Union["TimeSeriesSamples", TimeSeries]:
         return super().__getitem__(key)
@@ -398,8 +389,8 @@ class TimeSeriesSamples(
         else:
             return all([x == diff_list[0] for x in diff_list]), diff_list[0]
 
-    def is_aligned(self) -> bool:
-        raise_not_implemented("is_aligned() check on timeseries samples.")
+    def samples_aligned(self) -> bool:
+        raise_not_implemented("samples_aligned() check on timeseries samples.")
 
     def validate(self):
         BaseContainer.validate(self)
@@ -422,11 +413,17 @@ class TimeSeriesSamples(
             kwargs,
             dict(
                 sample_indices=like.sample_indices,
-                categorical_features=like.categorical_def,
                 missing_indicator=like.missing_indicator,
             ),
         )
         return TimeSeriesSamples(**kwargs)  # type: ignore  # Mypy complains about kwargs but it's fine.
+
+    @staticmethod
+    def new_empty_like(like: "TimeSeriesSamples", **kwargs) -> "TimeSeriesSamples":
+        new = TimeSeriesSamples.new_like(like=like, data=like._internal, **kwargs)  # pylint: disable=protected-access
+        for ts in new:
+            ts.df = empty_df_like(ts.df)
+        return new
 
 
 class StaticSamples(
@@ -447,7 +444,6 @@ class StaticSamples(
         self,
         data: T_ContainerInitializable,
         sample_indices: Optional[T_SampleIndex_Compatible] = None,
-        categorical_features: T_CategoricalDef_Arg = tuple(),
         missing_indicator: TMissingIndicator = np.nan,
     ) -> None:
         if sample_indices is not None:
@@ -462,7 +458,6 @@ class StaticSamples(
 
         BaseContainer.__init__(self, data=data)
         HasMissingMixin.__init__(self, missing_indicator=missing_indicator)
-        self.set_categorical_def(categorical_features)
         self.validate()
 
     # --- Sequence Interface ---
@@ -472,8 +467,8 @@ class StaticSamples(
         return self.new_like(like=self, data=new_data, sample_indices=new_data.index)
 
     def _getitem_column(self, column_key):
-        new_data, new_categorical_def = self._getitem_column_helper(column_key)
-        return self.new_like(like=self, data=new_data, categorical_features=new_categorical_def)
+        new_data = self._getitem_column_helper(column_key)
+        return self.new_like(like=self, data=new_data)
 
     def __getitem__(self, key) -> "StaticSamples":
         return super().__getitem__(key)
@@ -505,11 +500,16 @@ class StaticSamples(
             kwargs,
             dict(
                 sample_indices=like.sample_indices,
-                categorical_features=like.categorical_def,
                 missing_indicator=like.missing_indicator,
             ),
         )
         return StaticSamples(**kwargs)  # type: ignore  # Mypy complains about kwargs but it's fine.
+
+    @staticmethod
+    def new_empty_like(like: "StaticSamples", **kwargs) -> "StaticSamples":
+        new = StaticSamples.new_like(like=like, data=like.df, **kwargs)
+        new.df = empty_df_like(new.df)
+        return new
 
 
 THasTimeIndex = TypeVar("THasTimeIndex", TimeSeries, TimeSeriesSamples)

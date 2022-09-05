@@ -5,7 +5,6 @@ import pandas as pd
 import pytest
 
 from clairvoyance2.data.dataformat import TimeSeries
-from clairvoyance2.data.feature import FeatureType
 
 # pylint: disable=redefined-outer-name
 # ^ Otherwise pylint trips up on pytest fixtures.
@@ -21,47 +20,35 @@ class TestIntegration:
 
     # TODO: Test timeseries with DatetimeIndex.
     @pytest.mark.parametrize(
-        "data, categorical_features",
+        "data",
         [
-            (np.asarray([[1.0, 2.0, 3.0], [11.0, 12.0, 13.0]]), tuple()),
-            (pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]}), tuple()),
-            (
-                pd.DataFrame(
-                    {"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]},
-                    index=pd.to_datetime(["2000-01-01", "2000-01-02", "2000-01-03"]),
-                ),
-                tuple(),
+            np.asarray([[1.0, 2.0, 3.0], [11.0, 12.0, 13.0]]),
+            pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]}),
+            pd.DataFrame(
+                {"col_1": [1.0, 2.0, 3.0], "col_2": [1, 2, 3]},
+                index=pd.to_datetime(["2000-01-01", "2000-01-02", "2000-01-03"]),
             ),
-            (pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": ["a", "b", "c"]}), ["col_2"]),
-            (pd.DataFrame({"col_1": [], "col_2": []}), []),  # Empty case.
-            (pd.DataFrame({"col_1": [], "col_2": []}, dtype=int), ["col_2"]),  # Empty case w/ categorical def.
-            (
-                pd.DataFrame({"col_1": [2, 2, 2], "col_2": ["a", "b", "c"]}),
-                {"col_1": [1, 2], "col_2": ["a", "b", "c"]},
-            ),
+            pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": ["a", "b", "c"]}),
+            pd.DataFrame({"col_1": [], "col_2": []}),  # Empty case.
+            pd.DataFrame({"col_1": [], "col_2": []}, dtype=int),  # Empty case w/ dtype set
+            pd.DataFrame({"col_1": [2, 2, 2], "col_2": ["a", "b", "c"]}),
         ],
     )
-    def test_init_success(self, data, categorical_features):
-        TimeSeries(data=data, categorical_features=categorical_features)
+    def test_init_success(self, data):
+        TimeSeries(data=data)
 
     @pytest.mark.parametrize(
-        "data, categorical_features",
+        "data",
         [
-            (np.asarray([[1.0, 2.0, 3.0], [11.0, "a", 13.0]]), tuple()),
+            pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, ["some", "list"], 3]}),
             # ^ Non-homogenous type columns.
-            (pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [1, ["some", "list"], 3]}), tuple()),
-            # ^ Non-homogenous type columns.
-            (pd.DataFrame({"col_1": [1.0, 2.0, 3.0]}, columns=[("tu", "ple")]), tuple()),
+            pd.DataFrame({"col_1": [1.0, 2.0, 3.0]}, columns=[("tu", "ple")]),
             # Wrong kind of column index.
-            (pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": ["a", "b", "c"]}), tuple()),
-            # ^ Categorical column given but not specified.
-            (pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": ["a", "b", "c"]}), {"col_2": ["a"]}),
-            # ^ Wrong categories provided.
         ],
     )
-    def test_init_exception(self, data, categorical_features):
+    def test_init_exception(self, data):
         with pytest.raises((TypeError, ValueError)):
-            TimeSeries(data=data, categorical_features=categorical_features)
+            TimeSeries(data=data)
 
     def test_df(self, df_numeric):
         ts = TimeSeries(data=df_numeric)
@@ -88,15 +75,14 @@ class TestIntegration:
 
     def test_features(self):
         data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": ["a", "b", "c"]})
-        categorical_features = ["col_2"]
-        ts = TimeSeries(data=data, categorical_features=categorical_features)
+        ts = TimeSeries(data=data)
 
         features = ts.features
 
         assert isinstance(features, dict)
         assert len(features) == 2
-        assert features["col_1"].feature_type == FeatureType.NUMERIC
-        assert features["col_2"].feature_type == FeatureType.CATEGORICAL
+        assert features["col_1"].numeric_compatible
+        assert features["col_2"].categorical_compatible
 
     # --- Indexing-related ---
 
@@ -394,7 +380,7 @@ class TestIntegration:
 
     def test_copy(self):
         data = pd.DataFrame({"col_1": [1.0, -999.0, np.nan], "col_2": ["a", "b", "a"]})
-        ts = TimeSeries(data, categorical_features=["col_2"], missing_indicator=np.nan)
+        ts = TimeSeries(data, missing_indicator=np.nan)
 
         ts_copy = ts.copy()
         ts_copy.df.loc[0, "col_1"] = 12345.0
@@ -409,6 +395,32 @@ class TestIntegration:
         ts = TimeSeries(data=df_numeric)
         length = ts.n_timesteps
         assert length == 3
+
+    def test_new_like(self):
+        data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]}, index=[2, 3, 8])
+        ts = TimeSeries(data)
+
+        new = ts.new_like(ts, data=data + 1)
+
+        assert isinstance(new, TimeSeries)
+        assert new.n_features == ts.n_features
+        assert new.df.shape == ts.df.shape
+        assert list(new.features.keys()) == list(ts.features.keys())
+        assert (new.df.dtypes == ts.df.dtypes).all()
+        assert (new.df == data + 1).all().all()
+
+    def test_new_empty_like(self):
+        data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]}, index=[2, 3, 8])
+        ts = TimeSeries(data)
+
+        new = ts.new_empty_like(ts)
+
+        assert isinstance(new, TimeSeries)
+        assert new.n_features == ts.n_features
+        assert new.df.shape == (0, ts.df.shape[1])
+        assert list(new.features.keys()) == list(ts.features.keys())
+        assert (new.df.dtypes == ts.df.dtypes).all()
+        assert new.df.empty is True
 
     class TestMutation:
         def test_mutate_df_loc(self):

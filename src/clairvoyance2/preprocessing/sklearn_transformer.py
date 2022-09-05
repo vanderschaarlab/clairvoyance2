@@ -6,7 +6,7 @@ from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, StandardScaler
 from ..data import Dataset, TimeSeriesSamples
 from ..data.utils import cast_time_series_samples_feature_names_to_str
 from ..interface.model import TParams, TransformerModel
-from ..interface.requirements import DatasetRequirements, Requirements
+from ..interface.requirements import DatasetRequirements, DataValueOpts, Requirements
 from ..utils.common import split_multi_index_dataframe
 from ..utils.dev import NEEDED, raise_not_implemented
 
@@ -78,7 +78,8 @@ class SklearnTransformerForClairvoyance(TransformerModel):
 class SklearnTransformerStatic(SklearnTransformerForClairvoyance):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
-            requires_static_samples_present=True, requires_all_numeric_features=True
+            requires_static_covariates_present=True,
+            static_covariates_value_type=DataValueOpts.NUMERIC,
         ),
         prediction_requirements=None,
     )
@@ -105,7 +106,11 @@ class SklearnTransformerStatic(SklearnTransformerForClairvoyance):
 class SklearnTransformerTemporal(SklearnTransformerForClairvoyance):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
-            requires_static_samples_present=False, requires_all_numeric_features=True
+            requires_static_covariates_present=False,
+            temporal_covariates_value_type=DataValueOpts.NUMERIC,
+            temporal_targets_value_type=DataValueOpts.NUMERIC,
+            temporal_treatments_value_type=DataValueOpts.NUMERIC,
+            requires_all_temporal_containers_shares_index=False,
         ),
         prediction_requirements=None,
     )
@@ -173,7 +178,10 @@ class MinMaxScalerTemporal(SklearnTransformerTemporal):
 class OneHotEncoderTemporal(SklearnTransformerTemporal):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
-            requires_static_samples_present=False, requires_all_numeric_features=False  # NOTE.
+            requires_static_covariates_present=False,
+            temporal_covariates_value_type=DataValueOpts.NUMERIC,
+            temporal_targets_value_type=DataValueOpts.NUMERIC,
+            temporal_treatments_value_type=DataValueOpts.NUMERIC,
         ),
         prediction_requirements=None,
     )
@@ -199,7 +207,6 @@ class OneHotEncoderTemporal(SklearnTransformerTemporal):
         self.unchanged_column_names: List = []
         self.new_transformed_column_names: List[str] = []
         self.all_transformed_column_names: List[str] = []
-        self.original_categorical_def: Any = None
 
     def _get_data_to_transform(self, data: Dataset):
         cast_time_series_samples_feature_names_to_str(self.get_container(data))
@@ -224,7 +231,6 @@ class OneHotEncoderTemporal(SklearnTransformerTemporal):
     def _transform(self, data: Dataset) -> Dataset:
         data = data.copy()
         assert self.get_container(data) is not None
-        self.original_categorical_def = self.get_container(data).categorical_def
 
         to_transform, original_data_multiindex_df = self._get_data_to_transform(data)
         transformed_ndarray = self.sklearn_model.transform(to_transform)
@@ -256,7 +262,6 @@ class OneHotEncoderTemporal(SklearnTransformerTemporal):
         new_ts = TimeSeriesSamples.new_like(
             like=self.get_container(data),
             data=transformed_tuple_of_dfs,
-            categorical_features=self.new_transformed_column_names,
         )
         self.set_container(data, value=new_ts)
         return data
@@ -279,7 +284,6 @@ class OneHotEncoderTemporal(SklearnTransformerTemporal):
         new_ts = TimeSeriesSamples.new_like(
             like=self.get_container(data),
             data=inverse_transformed_tuple_of_dfs,
-            categorical_features=self.original_categorical_def,
         )
         self.set_container(data, value=new_ts)
         return data

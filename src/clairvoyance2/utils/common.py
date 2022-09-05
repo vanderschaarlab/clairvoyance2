@@ -39,6 +39,10 @@ def python_type_from_np_pd_dtype(dtype: type) -> type:
     return _np_dtype_to_python_type(_extract_np_dtype_from_pd(dtype))
 
 
+def isinstance_compat_np_pd_dtypes(o: Any, _type: type) -> bool:
+    return issubclass(python_type_from_np_pd_dtype(type(o)), python_type_from_np_pd_dtype(_type))
+
+
 def isnan(value: Union[int, float]) -> bool:
     if not isinstance(value, (int, float)):
         raise TypeError(f"Value of type {type(value)} is not supported")
@@ -86,7 +90,7 @@ def rolling_window(
 
 
 def empty_df_like(like_df: pd.DataFrame) -> pd.DataFrame:
-    df = like_df[: list(like_df.index)[0]]  # Empty df with right dtypes etc.
+    df = like_df.iloc[:0, :].copy()  # Empty df with right dtypes etc.
     return df
 
 

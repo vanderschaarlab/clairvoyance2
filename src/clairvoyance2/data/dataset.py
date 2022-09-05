@@ -4,7 +4,8 @@ from typing import Callable, Dict, Iterator, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
-from .constants import T_CategoricalDef_Arg, T_SamplesIndexDtype
+from ..utils.dev import raise_not_implemented
+from .constants import T_SamplesIndexDtype
 from .dataformat import (
     StaticSamples,
     T_ContainerInitializable,
@@ -47,19 +48,6 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
         else:
             return StaticSamples(data, **kwargs)
 
-    def _process_categorical_features_arg(
-        self, categorical_features: Optional[Dict[str, T_CategoricalDef_Arg]]
-    ) -> Dict[str, T_CategoricalDef_Arg]:
-        out_categorical_features: Dict[str, T_CategoricalDef_Arg] = {k: tuple() for k in self._container_names}
-        if categorical_features is not None:
-            for k in categorical_features.keys():
-                if k not in self._container_names:
-                    raise ValueError(
-                        f"Unexpected key in `categorical_features`, must be one of {self._container_names}"
-                    )
-            out_categorical_features.update(categorical_features)
-        return out_categorical_features
-
     def __init__(
         self,
         temporal_covariates: T_TimeSeriesSamplesInitializable,
@@ -70,35 +58,29 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
         # not applicable when passing as TimeSeriesSamples/StaticSamples objects.
         # TODO: Maybe this is not user-friendly, could redo such that it will always set these.
         sample_indices: Optional[T_SampleIndex_Compatible] = None,
-        categorical_features: Optional[Dict[str, T_CategoricalDef_Arg]] = None,
         missing_indicator: TMissingIndicator = np.nan,
     ) -> None:
-        categorical_features = self._process_categorical_features_arg(categorical_features)
         self.temporal_covariates = self._init_time_series_samples(
             temporal_covariates,
             sample_indices=sample_indices,
-            categorical_features=categorical_features["temporal_covariates"],
             missing_indicator=missing_indicator,
         )
         if static_covariates is not None:
             self.static_covariates = self._init_static_samples(
                 static_covariates,
                 sample_indices=sample_indices,
-                categorical_features=categorical_features["static_covariates"],
                 missing_indicator=missing_indicator,
             )
         if temporal_targets is not None:
             self.temporal_targets = self._init_time_series_samples(
                 temporal_targets,
                 sample_indices=sample_indices,
-                categorical_features=categorical_features["temporal_targets"],
                 missing_indicator=missing_indicator,
             )
         if temporal_treatments is not None:
             self.temporal_treatments = self._init_time_series_samples(
                 temporal_treatments,
                 sample_indices=sample_indices,
-                categorical_features=categorical_features["temporal_treatments"],
                 missing_indicator=missing_indicator,
             )
 
@@ -225,11 +207,14 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
                 temporal_targets=like.temporal_targets,
                 temporal_treatments=like.temporal_treatments,
                 sample_indices=like.temporal_covariates.sample_indices,
-                categorical_features=like.temporal_covariates.categorical_def,
                 missing_indicator=like.temporal_covariates.missing_indicator,
             ),
         )
         return Dataset(**kwargs)  # type: ignore  # Mypy complains about kwargs but it's fine.
+
+    @staticmethod
+    def new_empty_like(like: "Dataset", **kwargs) -> "Dataset":
+        raise_not_implemented("Dataset.new_empty_like method")
 
     # --- Sequence Interface ---
 

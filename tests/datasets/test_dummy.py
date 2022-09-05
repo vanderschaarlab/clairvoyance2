@@ -26,13 +26,29 @@ class TestIntegration:
         assert max(dataset.temporal_covariates.n_timesteps_per_sample) <= 30
         assert 15 <= min(dataset.temporal_covariates.n_timesteps_per_sample)
 
+    def test_dummy_dataset_no_static_covariates(self):
+        dataset = dummy_dataset(static_covariates_n_features=0)
+        assert dataset.static_covariates is None
+
+    def test_dummy_dataset_no_temporal_targets(self):
+        dataset = dummy_dataset(temporal_targets_n_features=0)
+        assert dataset.temporal_targets is None
+
+    def test_dummy_dataset_no_temporal_treatments(self):
+        dataset = dummy_dataset(temporal_treatments_n_features=0)
+        assert dataset.temporal_targets is None
+
     def test_dummy_dataset_has_missing(self):
-        dataset = dummy_dataset(static_covariates_missing_prob=1.0, temporal_covariates_missing_prob=1.0)
+        dataset = dummy_dataset(
+            static_covariates_n_features=5, static_covariates_missing_prob=1.0, temporal_covariates_missing_prob=1.0
+        )
         assert dataset.temporal_covariates.has_missing
         assert dataset.static_covariates.has_missing
 
     def test_dummy_dataset_no_missing(self):
-        dataset = dummy_dataset(static_covariates_missing_prob=0.0, temporal_covariates_missing_prob=0.0)
+        dataset = dummy_dataset(
+            static_covariates_n_features=5, static_covariates_missing_prob=0.0, temporal_covariates_missing_prob=0.0
+        )
         assert not dataset.temporal_covariates.has_missing
         assert not dataset.static_covariates.has_missing
 

@@ -107,7 +107,7 @@ class _AddTimeIndexFeatureTCParams(NamedTuple):
 class AddTimeIndexFeatureTC(TransformerModel):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
-            requires_time_series_index_numeric=True,
+            requires_all_temporal_data_index_numeric=True,
         ),
     )
     DEFAULT_PARAMS: _AddTimeIndexFeatureTCParams = _AddTimeIndexFeatureTCParams()
@@ -145,10 +145,6 @@ class AddTimeIndexFeatureTC(TransformerModel):
             ts.df = df_new
             # NOTE: No change to feature categorical definitions, as these new features are all numeric.
 
-            ts.refresh_features()
-
-        data.temporal_covariates.refresh_features()
-
         return data
 
 
@@ -161,7 +157,7 @@ class _AddStaticCovariatesTCParams(NamedTuple):
 class AddStaticCovariatesTC(TransformerModel):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
-            requires_static_samples_present=True,
+            requires_static_covariates_present=True,
         )
     )
     DEFAULT_PARAMS: _AddStaticCovariatesTCParams = _AddStaticCovariatesTCParams()
@@ -194,11 +190,6 @@ class AddStaticCovariatesTC(TransformerModel):
                 f"Features named {clashing_feature_names} clash with existing temporal covariate features. "
                 "Try setting/changing `feature_name_prefix` parameter."
             )
-        assert isinstance(data.temporal_covariates.categorical_def, dict)  # pylint: disable=protected-access
-        new_categorical_def = data.temporal_covariates.categorical_def.copy()  # pylint: disable=protected-access
-        new_categorical_def.update(
-            {s_cov_new_feature_names[k]: v for k, v in s_cov.categorical_def.items()}
-        )  # pylint: disable=protected-access
 
         t_cov_sample: TimeSeries
         for sample_idx, t_cov_sample in zip(data.temporal_covariates.sample_indices, data.temporal_covariates):
@@ -223,11 +214,8 @@ class AddStaticCovariatesTC(TransformerModel):
             assert (t_cov_sample_df.index == t_cov_sample_df_new.index).all()
 
             # print(t_cov_sample_df_new)
-            print(new_categorical_def)
-            t_cov_sample.set_df_and_features(t_cov_sample_df_new, new_categorical_def)
+            t_cov_sample.df = t_cov_sample_df_new
             # t_cov_sample.df = t_cov_sample_df_new
-
-        data.temporal_covariates.refresh_features(new_categorical_def)
 
         if self.params.drop_static_covariates:
             data.static_covariates = None

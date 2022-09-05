@@ -487,8 +487,6 @@ class TestIntegration:
             assert isinstance(tss1, TimeSeriesSamples)
             assert tss0.feature_names == tss.feature_names
             assert tss1.feature_names == tss.feature_names
-            assert tss0.categorical_def == tss.categorical_def  # pylint: disable=no-member
-            assert tss1.categorical_def == tss.categorical_def  # pylint: disable=no-member
             assert tss0.n_samples == 6
             assert tss1.n_samples == 6
             assert samples_map == {0: [0, 1, 2], 1: [3], 2: [4, 5]}
@@ -507,8 +505,6 @@ class TestIntegration:
             assert isinstance(tss1, TimeSeriesSamples)
             assert tss0.feature_names == tss.feature_names
             assert tss1.feature_names == tss.feature_names
-            assert tss0.categorical_def == tss.categorical_def  # pylint: disable=no-member
-            assert tss1.categorical_def == tss.categorical_def  # pylint: disable=no-member
             assert tss0.n_samples == 9
             assert tss1.n_samples == 9
             assert samples_map == {0: [0, 1, 2, 3], 1: [4, 5], 2: [6, 7, 8]}

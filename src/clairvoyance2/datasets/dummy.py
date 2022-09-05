@@ -15,10 +15,10 @@ class DummyDatasetGenerator:
         temporal_covariates_missing_prob: float,
         static_covariates_n_features: int,
         static_covariates_missing_prob: float,
-        temporal_targets_n_features: int = 0,
-        temporal_targets_n_categories: Optional[int] = None,
-        temporal_treatments_n_features: int = 0,
-        temporal_treatments_n_categories: Optional[int] = None,
+        temporal_targets_n_features: int,
+        temporal_targets_n_categories: Optional[int],
+        temporal_treatments_n_features: int,
+        temporal_treatments_n_categories: Optional[int],
     ) -> None:
         self.n_samples = n_samples
         self.temporal_covariates_n_features = temporal_covariates_n_features
@@ -62,7 +62,7 @@ class DummyDatasetGenerator:
             final = trend + noise
             final = DummyDatasetGenerator._apply_missing(final, rng, missing_prob)
             list_.append(final)
-        return TimeSeriesSamples(data=list_, sample_indices=None, categorical_features=None)
+        return TimeSeriesSamples(data=list_, sample_indices=None)
 
     @staticmethod
     def _generate_temporal_categorical(
@@ -79,7 +79,7 @@ class DummyDatasetGenerator:
         for sample_len in lens:
             array = rng.integers(low=0, high=n_categories, size=(sample_len, n_features))
             list_.append(array)
-        return TimeSeriesSamples(data=list_, sample_indices=None, categorical_features=None)
+        return TimeSeriesSamples(data=list_, sample_indices=None)
 
     @staticmethod
     def _generate_static_continuous(
@@ -171,8 +171,8 @@ def dummy_dataset(
     temporal_covariates_n_features: int = 5,
     temporal_covariates_max_len: int = 20,
     temporal_covariates_missing_prob: float = 0.1,
-    static_covariates_n_features: int = 4,
-    static_covariates_missing_prob: float = 0.1,
+    static_covariates_n_features: int = 0,
+    static_covariates_missing_prob: float = 0.0,
     temporal_targets_n_features: int = 0,
     temporal_targets_n_categories: Optional[int] = None,
     temporal_treatments_n_features: int = 0,

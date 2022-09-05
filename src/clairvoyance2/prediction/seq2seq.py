@@ -1,15 +1,18 @@
 from typing import TYPE_CHECKING, Any, Mapping, NamedTuple, Optional, Sequence, Tuple
 
-# import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
 from ..components.torch.common import OPTIM_MAP
 from ..components.torch.ffnn import FeedForwardNet
-from ..components.torch.interfaces import CustomizableLossModelBase
+from ..components.torch.interfaces import (
+    CustomizableLossMixin,
+    OrganizedModule,
+    OrganizedPredictorModuleMixin,
+)
 from ..components.torch.rnn import RecurrentFFNet, RNNHidden, mask_and_reshape
-from ..data import DEFAULT_PADDING_INDICATOR, Dataset, StaticSamples
+from ..data import DEFAULT_PADDING_INDICATOR, Dataset, StaticSamples, TimeSeriesSamples
 from ..data.utils import horizon_utils, split_time_series
 from ..interface import (
     Horizon,
@@ -18,14 +21,7 @@ from ..interface import (
     TimeIndexHorizon,
     TParams,
 )
-from ..interface.requirements import (
-    DatasetRequirements,
-    HorizonType,
-    PredictionRequirements,
-    PredictionTargetType,
-    PredictionTaskType,
-    Requirements,
-)
+from ..interface import requirements as r
 from ..interface.saving import SavableTorchModelMixin
 from ..utils import tensor_like as tl
 from ..utils.array_manipulation import compute_deltas, n_step_shifted
@@ -34,7 +30,7 @@ from ..utils.dev import NEEDED
 _DEBUG = False
 
 
-# TODO: For clarity, get rid of TEncodedRepresentation and always use RNNHidden.
+# TODO: For clarity, get rid of TEncodedRepresentation and always use RNNHidden?
 TEncodedRepresentation = Tuple[torch.Tensor, Optional[torch.Tensor]]
 
 
@@ -58,7 +54,7 @@ class _DefaultParams(NamedTuple):
     decoder_nonlinearity: Optional[str] = None
     decoder_proj_size: Optional[int] = None
     # Adapter FF NN:
-    adapter_hidden_dim: Sequence[int] = [50]
+    adapter_hidden_dims: Sequence[int] = [50]
     adapter_out_activation: Optional[str] = "Tanh"
     # Predictor FF NN:
     predictor_hidden_dims: Sequence[int] = []
@@ -73,16 +69,16 @@ class _DefaultParams(NamedTuple):
     padding_indicator: float = DEFAULT_PADDING_INDICATOR
 
 
-# TODO: Test this with various sets of params and make sure it doesn't fail.
-class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelMixin, PredictorModel, nn.Module):
-    requirements: Requirements
+class Seq2SeqCRNStylePredictorBase(
+    CustomizableLossMixin, SavableTorchModelMixin, PredictorModel, OrganizedPredictorModuleMixin, OrganizedModule
+):
+    requirements: r.Requirements
     DEFAULT_PARAMS: TDefaultParams
 
-    torch_dtype = torch.float
-
-    def __init__(self, params: Optional[TParams] = None) -> None:
+    def __init__(self, loss_fn: nn.Module, params: Optional[TParams] = None) -> None:
         PredictorModel.__init__(self, params)
-        nn.Module.__init__(self)
+        OrganizedModule.__init__(self, device=torch.device(self.params.device_str), dtype=torch.float)
+        CustomizableLossMixin.__init__(self, loss_fn=loss_fn)
 
         # Decoder RNN and corresponding predictor FF NN, and optimizer:
         self.encoder: Optional[RecurrentFFNet] = NEEDED
@@ -94,9 +90,6 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
 
         # Adapter.
         self.adapter: Optional[FeedForwardNet] = NEEDED
-
-        # Torch necessities:
-        self.device = torch.device(self.params.device_str)
 
         # Helpers.
         self.encoder_output_and_h_dim: Tuple[int, int, int] = (-1, -1, -1)  # To be set.
@@ -148,11 +141,12 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
         _, (d_num_layers, h_out, h_cell) = self.decoder.rnn.get_output_and_h_dim()
         self.decoder_output_and_h_dim = (d_num_layers, h_out, h_cell)
         self.inferred_params.adapter_output_size = d_num_layers * h_out + d_num_layers * h_cell
-        # print("self.inferred_params.adapter_input_size", self.inferred_params.adapter_input_size)
+        if _DEBUG:
+            print("self.inferred_params.adapter_input_size", self.inferred_params.adapter_input_size)
         self.adapter = FeedForwardNet(
             in_dim=self.inferred_params.adapter_input_size,
             out_dim=self.inferred_params.adapter_output_size,
-            hidden_dims=self.params.adapter_hidden_dim,
+            hidden_dims=self.params.adapter_hidden_dims,
             out_activation=self.params.adapter_out_activation,
             hidden_activations="ReLU",
         )
@@ -161,7 +155,7 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
         self._init_submodules_encoder_decoder()
         self._init_submodules_adapter()
 
-    def _init_inferred_params(self, data: Dataset) -> None:
+    def _init_inferred_params(self, data: Dataset, **kwargs) -> None:
         assert data.temporal_covariates is not None
         assert data.temporal_targets is not None
 
@@ -197,24 +191,24 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
         t_cov = data.temporal_covariates.to_torch_tensor(
             padding_indicator=self.params.padding_indicator,
             max_len=self.params.max_len,
-            dtype=self.torch_dtype,
+            dtype=self.dtype,
             device=self.device,
         )
         n_samples, n_timesteps = t_cov.shape[0], t_cov.shape[1]
         t_cov_ti = data.temporal_covariates.to_torch_tensor_time_index(
             padding_indicator=self.params.padding_indicator,
             max_len=self.params.max_len,
-            dtype=self.torch_dtype,
+            dtype=self.dtype,
             device=self.device,
         )
         time_deltas = compute_deltas(t_cov_ti, padding_indicator=self.params.padding_indicator)
         t_cov = torch.cat([t_cov, time_deltas], dim=-1)
 
-        t_targ = data.temporal_targets.to_torch_tensor(dtype=self.torch_dtype, device=self.device)
+        t_targ = data.temporal_targets.to_torch_tensor(dtype=self.dtype, device=self.device)
         t_cov = torch.cat([t_targ, t_cov], dim=-1)
 
         if data.static_covariates is not None:
-            s_cov = data.static_covariates.to_torch_tensor(dtype=self.torch_dtype, device=self.device)
+            s_cov = data.static_covariates.to_torch_tensor(dtype=self.dtype, device=self.device)
             s_cov_repeated = s_cov.repeat(repeats=(n_timesteps, 1, 1)).reshape([n_samples, n_timesteps, -1])
             t_cov = torch.cat([t_cov, s_cov_repeated], dim=-1)
 
@@ -236,6 +230,8 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
         if c is not None:
             c = c.reshape(c.shape[1], c.shape[0], c.shape[2])
             c = c.to(device=self.device)
+        if c is None:
+            c = torch.full_like(h, fill_value=torch.nan)
         return h, c
 
     def _concat_to_make_decoder_input(
@@ -245,30 +241,27 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
         decoder_input_to_cat = [t_targ, t_targ_td]
 
         if static_covariates is not None:
-            s_cov = static_covariates.to_torch_tensor(dtype=self.torch_dtype, device=self.device)
+            s_cov = static_covariates.to_torch_tensor(dtype=self.dtype, device=self.device)
             s_cov_repeated = s_cov.repeat(repeats=(n_timesteps, 1, 1)).reshape([n_samples, n_timesteps, -1])
             decoder_input_to_cat.append(s_cov_repeated)
 
         decoder_input = torch.cat(decoder_input_to_cat, dim=-1)
         return decoder_input
 
-    def _prep_torch_tensors_decoder(self, encoded_representations: TEncodedRepresentation, data: Dataset):
+    def _prep_torch_tensors_decoder(self, data: Dataset):
         if TYPE_CHECKING:
             assert data.temporal_targets is not None
-
-        h, c = self._reshape_h_sample_dim_0(encoded_representations)
-        assert h.shape[0] == data.n_samples
 
         t_targ = data.temporal_targets.to_torch_tensor(
             padding_indicator=self.params.padding_indicator,
             max_len=self.params.max_len,
-            dtype=self.torch_dtype,
+            dtype=self.dtype,
             device=self.device,
         )
         t_targ_ti = data.temporal_targets.to_torch_tensor_time_index(
             padding_indicator=self.params.padding_indicator,
             max_len=self.params.max_len,
-            dtype=self.torch_dtype,
+            dtype=self.dtype,
             device=self.device,
         )
         t_targ_td = compute_deltas(t_targ_ti, padding_indicator=self.params.padding_indicator)
@@ -282,24 +275,23 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
             padding_indicator=self.params.padding_indicator,
         )
 
-        return h, c, t_targ, decoder_input
+        return t_targ, decoder_input
 
     def _prep_torch_tensors_decoder_inference(
         self,
-        encoded_representations: TEncodedRepresentation,
         data: Dataset,
         horizon: TimeIndexHorizon,
     ):
         if TYPE_CHECKING:
             assert data.temporal_targets is not None
 
-        h, c = self._reshape_h_sample_dim_0(encoded_representations)
-
-        t_targ_ti = torch.tensor(horizon.time_index_sequence, dtype=self.torch_dtype, device=self.device).unsqueeze(
-            dim=-1
+        t_targ_ti = horizon.to_torch_time_series(
+            padding_indicator=self.params.padding_indicator,
+            max_len=None,
+            dtype=self.dtype,
+            device=self.device,
         )
         t_targ_td = compute_deltas(t_targ_ti, padding_indicator=self.params.padding_indicator)
-        assert h.shape[0] == t_targ_td.shape[0]
 
         # Prepare t_targ:
         n_samples = data.n_samples
@@ -309,37 +301,90 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
         t_targ = torch.full(size=(n_samples, n_timesteps, n_target_features), fill_value=torch.nan)
         # The only values that need filling are the 0th timestep:
         # take the target(s) just before the 0th step defined in horizon time index.
-        ts_targ = horizon_utils.time_series_samples.take_last_timestep_before_horizon_begins(
+        ts_targ = horizon_utils.time_series_samples.take_one_before_horizon_start(
             data.temporal_targets, horizon, inplace=False
         )
         t_targ_0 = ts_targ.to_torch_tensor(
             padding_indicator=self.params.padding_indicator,
             max_len=1,
-            dtype=self.torch_dtype,
+            dtype=self.dtype,
             device=self.device,
         )
         t_targ[:, [0], :] = t_targ_0
 
         decoder_input = self._concat_to_make_decoder_input(data.static_covariates, t_targ=t_targ, t_targ_td=t_targ_td)
 
+        return decoder_input
+
+    def _prep_data_for_fit(self, data: Dataset, **kwargs) -> Tuple[torch.Tensor, ...]:
+        min_pre_len = kwargs.pop("min_pre_len")
+        min_post_len = kwargs.pop("min_post_len")
+        repeat_last_pre_step = kwargs.pop("repeat_last_pre_step")
+
+        encoder_tensors = self._prep_torch_tensors_encoder(data, shift_targ_cov=True)
+
+        print("Preparing data for decoder training...")
+        data_pre, data_post, _ = split_time_series.split_at_each_step(
+            data, min_pre_len=min_pre_len, min_post_len=min_post_len, repeat_last_pre_step=repeat_last_pre_step
+        )
+        self.inferred_params.decoder_batch_size = min(self.params.batch_size, data_post.n_samples)
+        print("Preparing data for decoder training DONE.")
+
+        t_cov_to_encode, _ = self._prep_torch_tensors_encoder(data_pre, shift_targ_cov=False)
+
+        decoder_tensors = self._prep_torch_tensors_decoder(data_post)
+
+        return (*encoder_tensors, t_cov_to_encode, *decoder_tensors)
+
+    def _prep_data_for_predict(self, data: Dataset, horizon: Horizon, **kwargs) -> Tuple[torch.Tensor, ...]:
+        assert data.temporal_covariates is not None
+        assert data.temporal_targets is not None
+        assert isinstance(horizon, TimeIndexHorizon)
+
+        # Make sure to not use "future" values for prediction.
+        data_encode = horizon_utils.dataset.take_temporal_data_before_horizon_start(data, horizon, inplace=False)
+        if TYPE_CHECKING:
+            assert data_encode is not None
+
+        t_cov_to_encode, _ = self._prep_torch_tensors_encoder(data_encode, shift_targ_cov=False)
+        encoded_representations = self._get_encoder_representation(t_cov_to_encode)
+        h, c = self._reshape_h_sample_dim_0(encoded_representations)
+
+        decoder_input = self._prep_torch_tensors_decoder_inference(data, horizon)
+        assert h.shape[0] == decoder_input.shape[0]
+
         return h, c, decoder_input
 
-    def _train_encoder(self, data: Dataset) -> None:
+    def _prep_submodules_for_fit(self) -> None:
+        assert self.encoder is not None and self.decoder is not None and self.adapter is not None
+        self.encoder.to(self.device, dtype=self.dtype)
+        self.adapter.to(self.device, dtype=self.dtype)
+        self.decoder.to(self.device, dtype=self.dtype)
+        self.encoder.train()
+        self.adapter.train()
+        self.decoder.train()
+
+    def _prep_submodules_for_predict(self) -> None:
+        assert self.encoder is not None and self.decoder is not None and self.adapter is not None
+        self.encoder.to(self.device, dtype=self.dtype)
+        self.adapter.to(self.device, dtype=self.dtype)
+        self.decoder.to(self.device, dtype=self.dtype)
+        self.encoder.eval()
+        self.adapter.eval()
+        self.decoder.eval()
+
+    def _prep_submodules_for_predict_counterfactuals(self) -> None:
+        self._prep_submodules_for_predict()
+
+    def _train_encoder(self, encoder_tensors: Tuple) -> None:
         # 1 step ahead training.
         if TYPE_CHECKING:
             assert self.encoder is not None
             assert self.encoder_optim is not None
 
-        shuffle = True
-
-        # Convert the data.
-        t_cov, t_targ = self._prep_torch_tensors_encoder(data, shift_targ_cov=True)
         dataloader = DataLoader(
-            TensorDataset(t_cov, t_targ), batch_size=self.inferred_params.encoder_batch_size, shuffle=shuffle
+            TensorDataset(*encoder_tensors), batch_size=self.inferred_params.encoder_batch_size, shuffle=True
         )
-
-        self.encoder.to(self.device, dtype=self.torch_dtype)
-        self.encoder.train()
 
         for epoch_idx in range(self.params.epochs):
 
@@ -357,7 +402,8 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
                 out = mask_and_reshape(mask_selector=not_padding, tensor=out)
                 t_targ = mask_and_reshape(mask_selector=not_padding, tensor=t_targ)
 
-                loss = self.compute_loss(out, t_targ)
+                out = self.process_output_for_loss(out)
+                loss = self.loss_fn(out, t_targ)
 
                 # Optimization:
                 self.encoder_optim.zero_grad()
@@ -369,16 +415,14 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
             epoch_loss /= n_samples_cumul
             print(f"Epoch: {epoch_idx}, Loss: {epoch_loss}")
 
-    def _get_encoder_representation(self, data: Dataset) -> TEncodedRepresentation:
+    def _get_encoder_representation(  # pylint: disable=unused-argument
+        self, t_cov: torch.Tensor, **kwargs
+    ) -> TEncodedRepresentation:
         # 2. Get the encoded representations.
         if TYPE_CHECKING:
             assert self.encoder is not None
 
-        # Convert the data.
-        t_cov, _ = self._prep_torch_tensors_encoder(data, shift_targ_cov=False)
-
         # Not sure this is needed here, but just in case:
-        self.encoder.to(self.device, dtype=self.torch_dtype)
         self.encoder.eval()
 
         is_lstm = self.params.encoder_rnn_type == "LSTM"
@@ -439,35 +483,27 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
         )
         return h_adapted
 
-    def _train_decoder(self, encoded_representations: TEncodedRepresentation, data: Dataset) -> None:
+    def _train_decoder(self, encoded_representations: TEncodedRepresentation, decoder_tensors: Tuple) -> None:
         if TYPE_CHECKING:
             assert self.encoder is not None and self.decoder is not None
             assert self.decoder_optim is not None
             assert self.adapter is not None
 
-        shuffle = True
+        (t_targ, decoder_input) = decoder_tensors
+        h, c = self._reshape_h_sample_dim_0(encoded_representations)
+        assert h.shape[0] == decoder_input.shape[0]
 
-        # Inferred batch size:
-        self.inferred_params.decoder_batch_size = min(self.params.batch_size, data.n_samples)
-
-        h, c, t_targ, decoder_input = self._prep_torch_tensors_decoder(encoded_representations, data)
         dataloader = DataLoader(
             TensorDataset(h, c, t_targ, decoder_input),
             batch_size=self.inferred_params.decoder_batch_size,
-            shuffle=shuffle,
+            shuffle=True,
         )
-
-        self.adapter.to(self.device, dtype=self.torch_dtype)
-        self.decoder.to(self.device, dtype=self.torch_dtype)
-        self.adapter.train()
-        self.decoder.train()
 
         for epoch_idx in range(self.params.epochs):
 
             n_samples_cumul = 0
             epoch_loss = 0.0
             for _, (h, c, t_targ, decoder_input) in enumerate(dataloader):
-                # print("batch_idx", batch_idx)
                 current_batch_size = t_targ.shape[0]
                 n_samples_cumul += current_batch_size
 
@@ -484,7 +520,8 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
                 out = mask_and_reshape(mask_selector=not_padding, tensor=out)
                 t_targ = mask_and_reshape(mask_selector=not_padding, tensor=t_targ)
 
-                loss = self.compute_loss(out, t_targ)
+                out = self.process_output_for_loss(out)
+                loss = self.loss_fn(out, t_targ)
 
                 # Optimization:
                 self.decoder_optim.zero_grad()
@@ -496,122 +533,99 @@ class Seq2SeqCRNStylePredictorBase(CustomizableLossModelBase, SavableTorchModelM
             epoch_loss /= n_samples_cumul
             print(f"Epoch: {epoch_idx}, Loss: {epoch_loss}")
 
-    def _fit_seq2seq(
-        self,
-        data: Dataset,
-        min_pre_len: int,
-        min_post_len: int,
-        repeat_last_pre_step: bool = True,
-    ):
-        self._init_inferred_params(data)
-        self._init_submodules()
-        self._init_optimizers()
-
-        # Run the training stages.
-        print("=== Training stage: 1. Train encoder ===")
-        self._train_encoder(data)
-
-        print("=== Training stage: 2. Split the data at timesteps for decoder training ===")
-        data_pre, data_post, _ = split_time_series.split_at_each_step(
-            data, min_pre_len=min_pre_len, min_post_len=min_post_len, repeat_last_pre_step=repeat_last_pre_step
-        )
-        print("=== Training stage: 3. Train decoder ===")
-        encoded_representations = self._get_encoder_representation(data_pre)
-        self._train_decoder(encoded_representations, data_post)
-
     def _fit(self, data: Dataset, horizon: Horizon = None) -> "Seq2SeqCRNStylePredictorBase":
         # Ensure there are at least 2 timesteps in the posterior part of TimeSeries after the split
         # (as we need to shift targets by 1).
-        self._fit_seq2seq(data, min_pre_len=1, min_post_len=2, repeat_last_pre_step=True)
-        return self
-
-    def _inference_decoder(
-        self, encoded_representations: TEncodedRepresentation, data: Dataset, horizon: TimeIndexHorizon
-    ):
-        if TYPE_CHECKING:
-            assert self.encoder is not None and self.decoder is not None
-            assert self.adapter is not None
-
-        h, c, decoder_input = self._prep_torch_tensors_decoder_inference(encoded_representations, data, horizon)
-
-        self.adapter.to(self.device, dtype=self.torch_dtype)
-        self.decoder.to(self.device, dtype=self.torch_dtype)
-        self.adapter.eval()
-        self.decoder.eval()
-
-        h_adapter_out = self._pass_h_through_adapter(h, c)
-
-        out = self.decoder.autoregress(decoder_input, h=h_adapter_out, padding_indicator=self.params.padding_indicator)
-
-        out_final = self.process_output(out)
-        out_final[tl.eq_indicator(out, self.params.padding_indicator)] = self.params.padding_indicator
-
-        return out_final
-
-    def _predict(self, data: Dataset, horizon: Horizon) -> Dataset:
-        data = data.copy()
-
-        assert data.temporal_covariates is not None
-        assert data.temporal_targets is not None
-        assert isinstance(horizon, TimeIndexHorizon)
-
-        # Make sure to not use "future" values for prediction.
-        data_encode = horizon_utils.dataset.take_temporal_data_before_horizon_begins(data, horizon, inplace=False)
-        if TYPE_CHECKING:
-            assert data_encode is not None
-        encoded_representations = self._get_encoder_representation(data_encode)
-
-        out = self._inference_decoder(encoded_representations, data, horizon)
-
-        data.temporal_targets.update_from_sequence_of_arrays(
-            out, time_index_sequence=horizon.time_index_sequence, padding_indicator=self.params.padding_indicator
+        encoder_t_cov, encoder_t_targ, t_cov_to_encode, decoder_t_targ, decoder_input = self.prep_fit(
+            data=data, min_pre_len=1, min_post_len=2, repeat_last_pre_step=True
         )
 
-        return data
+        # Run the training stages.
+        print("=== Training stage: 1. Train encoder ===")
+        self._train_encoder(encoder_tensors=(encoder_t_cov, encoder_t_targ))
+
+        print("=== Training stage: 2. Train decoder ===")
+        if TYPE_CHECKING:
+            assert isinstance(t_cov_to_encode, torch.Tensor)
+        encoded_representations = self._get_encoder_representation(t_cov_to_encode)
+        self._train_decoder(encoded_representations, decoder_tensors=(decoder_t_targ, decoder_input))
+
+        return self
+
+    def _predict(self, data: Dataset, horizon: Horizon) -> TimeSeriesSamples:
+        data = data.copy()
+        if TYPE_CHECKING:
+            assert self.decoder is not None
+            assert data.temporal_targets is not None
+            assert isinstance(horizon, TimeIndexHorizon)
+
+        h, c, decoder_input = self.prep_predict(data, horizon=horizon)
+        if TYPE_CHECKING:
+            assert isinstance(h, torch.Tensor)
+            assert isinstance(decoder_input, torch.Tensor)
+
+        with torch.no_grad():
+            h_adapter_out = self._pass_h_through_adapter(h, c)
+            out = self.decoder.autoregress(
+                decoder_input, h=h_adapter_out, padding_indicator=self.params.padding_indicator
+            )
+
+            out_final: Any = self.process_output_for_loss(out)
+            out_final[tl.eq_indicator(out, self.params.padding_indicator)] = self.params.padding_indicator
+
+        prediction = TimeSeriesSamples.new_empty_like(like=data.temporal_targets)
+        prediction.update_from_sequence_of_arrays(
+            out_final, time_index_sequence=horizon.time_index_sequence, padding_indicator=self.params.padding_indicator
+        )
+        return prediction
 
 
 class Seq2SeqCRNStyleRegressor(Seq2SeqCRNStylePredictorBase):
-    requirements: Requirements = Requirements(
-        dataset_requirements=DatasetRequirements(
-            requires_all_numeric_features=True,
+    requirements: r.Requirements = r.Requirements(
+        dataset_requirements=r.DatasetRequirements(
+            temporal_covariates_value_type=r.DataValueOpts.NUMERIC,
+            temporal_targets_value_type=r.DataValueOpts.NUMERIC,
+            static_covariates_value_type=r.DataValueOpts.NUMERIC,
             requires_no_missing_data=True,
-            requires_temporal_containers_have_same_time_index=True,
+            requires_all_temporal_containers_shares_index=True,
         ),
-        prediction_requirements=PredictionRequirements(
-            task=PredictionTaskType.REGRESSION,
-            target=PredictionTargetType.TIME_SERIES,
-            horizon=HorizonType.TIME_INDEX,
+        prediction_requirements=r.PredictionRequirements(
+            target_data_structure=r.DataStructureOpts.TIME_SERIES,
+            horizon_type=r.HorizonOpts.TIME_INDEX,
+            min_timesteps_target_when_fit=3,
+            min_timesteps_target_when_predict=1,
         ),
     )
     DEFAULT_PARAMS: TDefaultParams = _DefaultParams()
 
-    def process_output(self, out: torch.Tensor, **kwargs) -> torch.Tensor:
-        return out
+    def process_output_for_loss(self, output: torch.Tensor, **kwargs) -> torch.Tensor:
+        return output
 
     def __init__(self, params: Optional[TParams] = None) -> None:
-        super().__init__(params)
-        self.loss_fn = nn.MSELoss()
+        Seq2SeqCRNStylePredictorBase.__init__(self, loss_fn=nn.MSELoss(), params=params)
 
 
 class Seq2SeqCRNStyleClassifier(Seq2SeqCRNStylePredictorBase):
-    requirements: Requirements = Requirements(
-        dataset_requirements=DatasetRequirements(
-            requires_all_numeric_features=True,
+    requirements: r.Requirements = r.Requirements(
+        dataset_requirements=r.DatasetRequirements(
+            temporal_covariates_value_type=r.DataValueOpts.NUMERIC,
+            temporal_targets_value_type=r.DataValueOpts.NUMERIC_CATEGORICAL,
+            static_covariates_value_type=r.DataValueOpts.NUMERIC,
             requires_no_missing_data=True,
-            requires_temporal_containers_have_same_time_index=True,
+            requires_all_temporal_containers_shares_index=True,
         ),
-        prediction_requirements=PredictionRequirements(
-            task=PredictionTaskType.CLASSIFICATION,
-            target=PredictionTargetType.TIME_SERIES,
-            horizon=HorizonType.TIME_INDEX,
+        prediction_requirements=r.PredictionRequirements(
+            target_data_structure=r.DataStructureOpts.TIME_SERIES,
+            horizon_type=r.HorizonOpts.TIME_INDEX,
+            min_timesteps_target_when_fit=3,
+            min_timesteps_target_when_predict=1,
         ),
     )
     DEFAULT_PARAMS: TDefaultParams = _DefaultParams()
 
-    def process_output(self, out: torch.Tensor, **kwargs) -> torch.Tensor:
-        return self.softmax(out)
+    def process_output_for_loss(self, output: torch.Tensor, **kwargs) -> torch.Tensor:
+        return self.softmax(output)
 
     def __init__(self, params: Optional[TParams] = None) -> None:
-        super().__init__(params)
+        Seq2SeqCRNStylePredictorBase.__init__(self, loss_fn=nn.CrossEntropyLoss(), params=params)
         self.softmax = nn.Softmax(dim=-1)
-        self.loss_fn = nn.CrossEntropyLoss()

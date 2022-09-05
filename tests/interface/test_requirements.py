@@ -9,13 +9,12 @@ import pytest
 from clairvoyance2.data import Dataset, StaticSamples, TimeSeriesSamples
 from clairvoyance2.interface import DatasetRequirements, NStepAheadHorizon, Requirements
 from clairvoyance2.interface.requirements import (
-    HorizonType,
+    DataStructureOpts,
+    DataValueOpts,
+    HorizonOpts,
     PredictionRequirements,
-    PredictionTargetType,
     RequirementsChecker,
     TreatmentEffectsRequirements,
-    TreatmentType,
-    TreatmentValueType,
 )
 
 # ^ Don't want RequirementsChecker to be "public" so it stays within requirements module.
@@ -27,6 +26,9 @@ class MockDataset:
     static_covariates: Optional[StaticSamples] = None
     temporal_targets: Optional[TimeSeriesSamples] = None
     temporal_treatments: Optional[TimeSeriesSamples] = None
+
+    def check_temporal_containers_have_same_time_index(self):
+        return True, None
 
     @property
     def static_data_containers(self):
@@ -65,7 +67,7 @@ class MockDataset:
 
 
 class TestDataRequirements:
-    class TestGeneralRequirements:
+    class TestDataRequirementsGeneral:
         @pytest.mark.parametrize(
             "data, expectation",
             [
@@ -80,11 +82,12 @@ class TestDataRequirements:
             ],
         )
         def test_requires_static_samples_present(self, data, expectation):
-            requirements = Requirements(dataset_requirements=DatasetRequirements(requires_static_samples_present=True))
-            requirements_checker = RequirementsChecker()
+            requirements = Requirements(
+                dataset_requirements=DatasetRequirements(requires_static_covariates_present=True)
+            )
 
             with expectation as excinfo:
-                requirements_checker.check_data_requirements(requirements, data)
+                RequirementsChecker.check_data_requirements_general(requirements, data)
             if excinfo is not None:
                 assert "requires static samples" in str(excinfo.value).lower()
 
@@ -121,9 +124,8 @@ class TestDataRequirements:
             self, is_regular_returns_t_cov, is_regular_returns_t_targ, is_regular_returns_t_treat, expectation
         ):
             requirements = Requirements(
-                dataset_requirements=DatasetRequirements(requires_time_series_samples_regular=True)
+                dataset_requirements=DatasetRequirements(requires_all_temporal_data_regular=True)
             )
-            requirements_checker = RequirementsChecker()
 
             t_cov = Mock()
             t_cov.is_regular = Mock(return_value=is_regular_returns_t_cov)
@@ -135,7 +137,7 @@ class TestDataRequirements:
             t_treat.is_regular = Mock(return_value=is_regular_returns_t_treat)
 
             with expectation as excinfo:
-                requirements_checker.check_data_requirements(
+                RequirementsChecker.check_data_requirements_general(
                     requirements,
                     MockDataset(temporal_covariates=t_cov, temporal_targets=t_targ, temporal_treatments=t_treat),
                 )
@@ -143,7 +145,7 @@ class TestDataRequirements:
                 assert "requires regular timeseries" in str(excinfo.value).lower()
 
         @pytest.mark.parametrize(
-            "is_aligned_returns_t_cov, is_aligned_returns_t_targ, is_aligned_returns_t_treat, expectation",
+            "samples_aligned_returns_t_cov, samples_aligned_returns_t_targ, samples_aligned_returns_t_treat, expectation",
             [
                 (
                     True,
@@ -172,24 +174,27 @@ class TestDataRequirements:
             ],
         )
         def test_requires_time_series_samples_aligned(
-            self, is_aligned_returns_t_cov, is_aligned_returns_t_targ, is_aligned_returns_t_treat, expectation
+            self,
+            samples_aligned_returns_t_cov,
+            samples_aligned_returns_t_targ,
+            samples_aligned_returns_t_treat,
+            expectation,
         ):
             requirements = Requirements(
-                dataset_requirements=DatasetRequirements(requires_time_series_samples_aligned=True)
+                dataset_requirements=DatasetRequirements(requires_all_temporal_data_samples_aligned=True)
             )
-            requirements_checker = RequirementsChecker()
 
             t_cov = Mock()
-            t_cov.is_aligned = Mock(return_value=is_aligned_returns_t_cov)
+            t_cov.samples_aligned = Mock(return_value=samples_aligned_returns_t_cov)
 
             t_targ = Mock()
-            t_targ.is_aligned = Mock(return_value=is_aligned_returns_t_targ)
+            t_targ.samples_aligned = Mock(return_value=samples_aligned_returns_t_targ)
 
             t_treat = Mock()
-            t_treat.is_aligned = Mock(return_value=is_aligned_returns_t_treat)
+            t_treat.samples_aligned = Mock(return_value=samples_aligned_returns_t_treat)
 
             with expectation as excinfo:
-                requirements_checker.check_data_requirements(
+                RequirementsChecker.check_data_requirements_general(
                     requirements,
                     MockDataset(temporal_covariates=t_cov, temporal_targets=t_targ, temporal_treatments=t_treat),
                 )
@@ -237,11 +242,18 @@ class TestDataRequirements:
                 ),
             ],
         )
-        def test_requires_time_series_index_numeric(self, t_cov_index, t_targ_index, t_treat_index, expectation):
-            requirements = Requirements(
-                dataset_requirements=DatasetRequirements(requires_time_series_index_numeric=True)
+        def test_requires_time_series_index_numeric(
+            self, t_cov_index, t_targ_index, t_treat_index, expectation, monkeypatch
+        ):
+            monkeypatch.setattr(
+                "clairvoyance2.interface.requirements.RequirementsChecker._check_data_value_type",
+                Mock(),
+                raising=True,
             )
-            requirements_checker = RequirementsChecker()
+
+            requirements = Requirements(
+                dataset_requirements=DatasetRequirements(requires_all_temporal_data_index_numeric=True)
+            )
 
             mock_t_cov_0 = Mock()
             mock_t_cov_0.df = Mock()
@@ -265,7 +277,7 @@ class TestDataRequirements:
                 mock_t_treat = None
 
             with expectation as excinfo:
-                requirements_checker.check_data_requirements(
+                RequirementsChecker.check_data_requirements_general(
                     requirements,
                     MockDataset(
                         temporal_covariates=mock_t_cov, temporal_targets=mock_t_targ, temporal_treatments=mock_t_treat
@@ -338,7 +350,6 @@ class TestDataRequirements:
             expectation_text,
         ):
             requirements = Requirements(dataset_requirements=DatasetRequirements(requires_no_missing_data=True))
-            requirements_checker = RequirementsChecker()
 
             data_temporal_covariates = Mock()
             data_temporal_covariates.has_missing = temporal_covariates_has_missing
@@ -353,7 +364,7 @@ class TestDataRequirements:
             data_temporal_treatments.has_missing = temporal_treatments_has_missing
 
             with expectation as excinfo:
-                requirements_checker.check_data_requirements(
+                RequirementsChecker.check_data_requirements_general(
                     requirements,
                     MockDataset(
                         temporal_covariates=data_temporal_covariates,
@@ -380,139 +391,229 @@ class TestDataRequirements:
         )
         def test_requires_no_missing_data_no_static(self, temporal_covariates_has_missing, expectation):
             requirements = Requirements(dataset_requirements=DatasetRequirements(requires_no_missing_data=True))
-            requirements_checker = RequirementsChecker()
 
             data_temporal_covariates_samples = Mock()
             data_temporal_covariates_samples.has_missing = temporal_covariates_has_missing
 
             with expectation as excinfo:
-                requirements_checker.check_data_requirements(
+                RequirementsChecker.check_data_requirements_general(
                     requirements, MockDataset(temporal_covariates=data_temporal_covariates_samples)
                 )
             if excinfo is not None:
                 assert "temporal covariates had missing data" in str(excinfo.value).lower()
 
         @pytest.mark.parametrize(
-            "requirement_value, data_containers, expectation",
+            "value_type",
             [
-                (
-                    True,
-                    [
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=False),
-                    ],
-                    pytest.raises(RuntimeError),
-                ),
-                (
-                    True,
-                    [
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                    ],
-                    pytest.raises(RuntimeError),
-                ),
-                (
-                    True,
-                    [
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                    ],
-                    pytest.raises(RuntimeError),
-                ),
-                (
-                    True,
-                    [
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=True),
-                    ],
-                    pytest.raises(RuntimeError),
-                ),
-                (
-                    True,
-                    [
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=False),
-                    ],
-                    pytest.raises(RuntimeError),
-                ),
-                (
-                    True,
-                    [
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                    ],
-                    does_not_raise(),
-                ),
-                (
-                    False,
-                    [
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=False),
-                        Mock(all_numeric_compatible_features=False),
-                    ],
-                    does_not_raise(),
-                ),
-                (
-                    False,
-                    [
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                        Mock(all_numeric_compatible_features=True),
-                    ],
-                    does_not_raise(),
-                ),
+                DataValueOpts.NUMERIC_BINARY,
+                DataValueOpts.NUMERIC_CATEGORICAL,
             ],
         )
-        def test_requires_all_numeric_compatible_features(self, requirement_value, data_containers, expectation):
+        def test_static_covariates_value_type(self, value_type):
             requirements = Requirements(
-                dataset_requirements=DatasetRequirements(requires_all_numeric_features=requirement_value)
+                dataset_requirements=DatasetRequirements(static_covariates_value_type=value_type),
             )
-            requirements_checker = RequirementsChecker()
+            mock_static_covariates = Mock(all_features_categorical=False, all_features_binary=False)
+            data = MockDataset(
+                temporal_covariates=Mock(),
+                static_covariates=mock_static_covariates,
+            )
 
-            with expectation as excinfo:
-                requirements_checker.check_data_requirements(requirements, MockDataset(*data_containers))
-            if excinfo is not None:
-                assert "non-numeric features" in str(excinfo.value).lower()
+            with pytest.raises(RuntimeError) as excinfo:
+                RequirementsChecker.check_data_requirements_general(requirements=requirements, data=data)
+            assert value_type.name in str(excinfo.value)
 
-    class TestPredictionSpecificRequirements:
+        @pytest.mark.parametrize(
+            "value_type",
+            [
+                DataValueOpts.NUMERIC_BINARY,
+                DataValueOpts.NUMERIC_CATEGORICAL,
+            ],
+        )
+        def test_temporal_covariates_value_type(self, value_type):
+            requirements = Requirements(
+                dataset_requirements=DatasetRequirements(temporal_covariates_value_type=value_type),
+            )
+            mock_temporal_covariates = Mock(all_features_categorical=False, all_features_binary=False)
+            data = MockDataset(
+                temporal_covariates=mock_temporal_covariates,
+            )
+
+            with pytest.raises(RuntimeError) as excinfo:
+                RequirementsChecker.check_data_requirements_general(requirements=requirements, data=data)
+            assert value_type.name in str(excinfo.value)
+
+        @pytest.mark.parametrize(
+            "value_type",
+            [
+                DataValueOpts.NUMERIC_BINARY,
+                DataValueOpts.NUMERIC_CATEGORICAL,
+            ],
+        )
+        def test_temporal_targets_value_type(self, value_type):
+            requirements = Requirements(
+                dataset_requirements=DatasetRequirements(temporal_targets_value_type=value_type),
+            )
+            mock_temporal_targets = Mock(all_features_categorical=False, all_features_binary=False)
+            data = MockDataset(
+                temporal_covariates=Mock(),
+                temporal_targets=mock_temporal_targets,
+            )
+
+            with pytest.raises(RuntimeError) as excinfo:
+                RequirementsChecker.check_data_requirements_general(requirements=requirements, data=data)
+            assert value_type.name in str(excinfo.value)
+
+        @pytest.mark.parametrize(
+            "value_type",
+            [
+                DataValueOpts.NUMERIC_BINARY,
+                DataValueOpts.NUMERIC_CATEGORICAL,
+            ],
+        )
+        def test_temporal_treatments_value_type(self, value_type):
+            requirements = Requirements(
+                dataset_requirements=DatasetRequirements(temporal_treatments_value_type=value_type),
+            )
+            mock_temporal_treatments = Mock(all_features_categorical=False, all_features_binary=False)
+            data = MockDataset(
+                temporal_covariates=Mock(),
+                temporal_treatments=mock_temporal_treatments,
+            )
+
+            with pytest.raises(RuntimeError) as excinfo:
+                RequirementsChecker.check_data_requirements_general(requirements=requirements, data=data)
+            assert value_type.name in str(excinfo.value)
+
+        class TestWhenPredictionRequirementsProvided:
+            def test_called_no_horizon(self, monkeypatch):
+                mock_call = Mock()
+                monkeypatch.setattr(
+                    "clairvoyance2.interface.requirements.RequirementsChecker._check_data_requirements_predict",
+                    mock_call,
+                    raising=True,
+                )
+                requirements = Requirements(
+                    dataset_requirements=DatasetRequirements(),
+                    prediction_requirements=PredictionRequirements(target_data_structure=DataStructureOpts.TIME_SERIES),
+                )
+
+                data = MockDataset(temporal_covariates=Mock())
+                RequirementsChecker.check_data_requirements_general(requirements, data)
+
+                mock_call.assert_called_once_with(
+                    called_at_fit_time=True, requirements=requirements, data=data, horizon=None
+                )
+
+            def test_called_horizon(self, monkeypatch):
+                mock_call = Mock()
+                monkeypatch.setattr(
+                    "clairvoyance2.interface.requirements.RequirementsChecker._check_data_requirements_predict",
+                    mock_call,
+                    raising=True,
+                )
+                requirements = Requirements(
+                    dataset_requirements=DatasetRequirements(),
+                    prediction_requirements=PredictionRequirements(target_data_structure=DataStructureOpts.TIME_SERIES),
+                )
+                horizon = Mock()
+
+                data = MockDataset(temporal_covariates=Mock())
+                RequirementsChecker.check_data_requirements_general(requirements, data, horizon=horizon)
+
+                mock_call.assert_called_once_with(
+                    called_at_fit_time=True, requirements=requirements, data=data, horizon=horizon
+                )
+
+        class TestWhenTreatmentEffectsRequirementsProvided:
+            def test_called_no_extra_kwargs(self, monkeypatch):
+                monkeypatch.setattr(  # Skip prediction requirements checks.
+                    "clairvoyance2.interface.requirements.RequirementsChecker._check_data_requirements_predict",
+                    Mock(),
+                    raising=True,
+                )
+                mock_call = Mock()
+                monkeypatch.setattr(
+                    "clairvoyance2.interface.requirements.RequirementsChecker."
+                    "_check_data_requirements_predict_counterfactuals",
+                    mock_call,
+                    raising=True,
+                )
+                requirements = Requirements(
+                    dataset_requirements=DatasetRequirements(),
+                    prediction_requirements=PredictionRequirements(),
+                    treatment_effects_requirements=TreatmentEffectsRequirements(),
+                )
+
+                data = MockDataset(temporal_covariates=Mock())
+                RequirementsChecker.check_data_requirements_general(requirements, data)
+
+                mock_call.assert_called_once_with(
+                    called_at_fit_time=True,
+                    requirements=requirements,
+                    data=data,
+                    sample_index=None,
+                    treatment_scenarios=None,
+                    horizon=None,
+                )
+
+            def test_called_extra_kwargs(self, monkeypatch):
+                monkeypatch.setattr(  # Skip prediction requirements checks.
+                    "clairvoyance2.interface.requirements.RequirementsChecker._check_data_requirements_predict",
+                    Mock(),
+                    raising=True,
+                )
+                mock_call = Mock()
+                monkeypatch.setattr(
+                    "clairvoyance2.interface.requirements.RequirementsChecker."
+                    "_check_data_requirements_predict_counterfactuals",
+                    mock_call,
+                    raising=True,
+                )
+                requirements = Requirements(
+                    dataset_requirements=DatasetRequirements(),
+                    prediction_requirements=PredictionRequirements(),
+                    treatment_effects_requirements=TreatmentEffectsRequirements(),
+                )
+                horizon = Mock()
+
+                data = MockDataset(temporal_covariates=Mock())
+                RequirementsChecker.check_data_requirements_general(requirements, data, horizon=horizon)
+
+                mock_call.assert_called_once_with(
+                    called_at_fit_time=True,
+                    requirements=requirements,
+                    data=data,
+                    sample_index=None,
+                    treatment_scenarios=None,
+                    horizon=horizon,
+                )
+
+    class TestDataRequirementsPredict:
         class TestTargetTimeSeries:
             def test_fails_no_temporal_targets(self):
                 requirements = Requirements(
                     dataset_requirements=DatasetRequirements(),
-                    prediction_requirements=PredictionRequirements(target=PredictionTargetType.TIME_SERIES),
+                    prediction_requirements=PredictionRequirements(target_data_structure=DataStructureOpts.TIME_SERIES),
                 )
-                requirements_checker = RequirementsChecker()
 
                 with pytest.raises(RuntimeError) as excinfo:
-                    requirements_checker.check_data_requirements(requirements, MockDataset(temporal_covariates=Mock()))
+                    RequirementsChecker.check_data_requirements_predict(
+                        requirements, MockDataset(temporal_covariates=Mock()), horizon=Mock()
+                    )
                 assert "must contain temporal targets" in str(excinfo.value).lower()
 
             def test_fails_no_horizon_passed_to_check(self):
                 requirements = Requirements(
                     dataset_requirements=DatasetRequirements(),
-                    prediction_requirements=PredictionRequirements(target=PredictionTargetType.TIME_SERIES),
+                    prediction_requirements=PredictionRequirements(target_data_structure=DataStructureOpts.TIME_SERIES),
                 )
-                requirements_checker = RequirementsChecker()
 
                 with pytest.raises(RuntimeError) as excinfo:
-                    requirements_checker.check_data_requirements(
-                        requirements, MockDataset(temporal_covariates=Mock(), temporal_targets=Mock())
+                    RequirementsChecker.check_data_requirements_predict(
+                        requirements, MockDataset(temporal_covariates=Mock(), temporal_targets=Mock()), horizon=None
                     )
-                assert "horizon must be passed" in str(excinfo.value).lower()
+                assert "must receive a horizon" in str(excinfo.value).lower()
 
             @pytest.mark.parametrize(
                 "horizon, expectation",
@@ -522,7 +623,7 @@ class TestDataRequirements:
                         does_not_raise(),
                     ),
                     (
-                        None,
+                        Mock(),
                         pytest.raises(RuntimeError),
                     ),
                 ],
@@ -532,17 +633,16 @@ class TestDataRequirements:
                     requirements = Requirements(
                         dataset_requirements=DatasetRequirements(),
                         prediction_requirements=PredictionRequirements(
-                            target=PredictionTargetType.TIME_SERIES, horizon=HorizonType.N_STEP_AHEAD
+                            target_data_structure=DataStructureOpts.TIME_SERIES, horizon_type=HorizonOpts.N_STEP_AHEAD
                         ),
                     )
-                    requirements_checker = RequirementsChecker()
 
                     with expectation as excinfo:
-                        requirements_checker.check_data_requirements(
+                        RequirementsChecker.check_data_requirements_predict(
                             requirements,
                             MockDataset(
                                 temporal_covariates=Mock(n_timesteps_per_sample=[100]),
-                                temporal_targets=Mock(n_timesteps_per_sample=[100]),
+                                temporal_targets=Mock(n_timesteps_per_sample=[100], all_features_numeric=True),
                             ),
                             # ^ To avoid failing subsequent length checks.
                             horizon=horizon,
@@ -601,10 +701,9 @@ class TestDataRequirements:
                 requirements = Requirements(
                     dataset_requirements=DatasetRequirements(),
                     prediction_requirements=PredictionRequirements(
-                        target=PredictionTargetType.TIME_SERIES, horizon=HorizonType.N_STEP_AHEAD
+                        target_data_structure=DataStructureOpts.TIME_SERIES, horizon_type=HorizonOpts.N_STEP_AHEAD
                     ),
                 )
-                requirements_checker = RequirementsChecker()
                 data = MockDataset(
                     temporal_covariates=Mock(n_timesteps_per_sample=[t_cov_max_len]),
                     temporal_targets=Mock(n_timesteps_per_sample=[t_targ_max_len]),
@@ -612,7 +711,7 @@ class TestDataRequirements:
                 )
 
                 with expectation as excinfo:
-                    requirements_checker.check_data_requirements(
+                    RequirementsChecker.check_data_requirements_general(
                         requirements,
                         data,
                         horizon=horizon,
@@ -620,23 +719,26 @@ class TestDataRequirements:
                 if excinfo is not None:
                     assert "horizon must be < max timesteps" in str(excinfo.value).lower()
 
-    class TestTreatmentEffectsSpecificRequirements:
-        class TestTreatmentTypeTimeSeries:
+    class TestDataRequirementsPredictCounterfactuals:
+        class TestDataStructureTimeSeries:
             def test_fails_no_temporal_targets(self):
                 requirements = Requirements(
                     dataset_requirements=DatasetRequirements(),
                     prediction_requirements=PredictionRequirements(
-                        target=PredictionTargetType.TIME_SERIES, horizon=HorizonType.TIME_INDEX
+                        target_data_structure=DataStructureOpts.TIME_SERIES, horizon_type=HorizonOpts.TIME_INDEX
                     ),
                     treatment_effects_requirements=TreatmentEffectsRequirements(
-                        treatment_type=TreatmentType.TIME_SERIES
+                        treatment_data_structure=DataStructureOpts.TIME_SERIES
                     ),
                 )
-                requirements_checker = RequirementsChecker()
 
                 with pytest.raises(RuntimeError) as excinfo:
-                    requirements_checker.check_data_requirements(
-                        requirements, MockDataset(temporal_covariates=Mock()), horizon=Mock()
+                    RequirementsChecker.check_data_requirements_predict_counterfactuals(
+                        requirements=requirements,
+                        data=MockDataset(temporal_covariates=Mock()),
+                        horizon=Mock(),
+                        sample_index=Mock(),
+                        treatment_scenarios=Mock(),
                     )
                 assert "must contain temporal targets" in str(excinfo.value).lower()
 
@@ -644,97 +746,31 @@ class TestDataRequirements:
                 requirements = Requirements(
                     dataset_requirements=DatasetRequirements(),
                     prediction_requirements=PredictionRequirements(
-                        target=PredictionTargetType.TIME_SERIES, horizon=HorizonType.TIME_INDEX
+                        target_data_structure=DataStructureOpts.TIME_SERIES, horizon_type=HorizonOpts.TIME_INDEX
                     ),
                     treatment_effects_requirements=TreatmentEffectsRequirements(
-                        treatment_type=TreatmentType.TIME_SERIES
+                        treatment_data_structure=DataStructureOpts.TIME_SERIES
                     ),
                 )
-                requirements_checker = RequirementsChecker()
 
                 with pytest.raises(RuntimeError) as excinfo:
-                    requirements_checker.check_data_requirements(
-                        requirements, MockDataset(temporal_covariates=Mock(), temporal_targets=Mock()), horizon=Mock()
+                    RequirementsChecker.check_data_requirements_predict_counterfactuals(
+                        requirements=requirements,
+                        data=MockDataset(temporal_covariates=Mock(), temporal_targets=Mock()),
+                        horizon=Mock(),
+                        sample_index=Mock(),
+                        treatment_scenarios=Mock(),
                     )
                 assert "must contain temporal treatments" in str(excinfo.value).lower()
 
-            @pytest.mark.parametrize(
-                "treatment_value_type",
-                [
-                    TreatmentValueType.BINARY,
-                    TreatmentValueType.CATEGORICAL,
-                ],
-            )
-            def test_treatment_value_categorical_feature_mismatch(self, treatment_value_type):
-                requirements = Requirements(
-                    dataset_requirements=DatasetRequirements(),
-                    prediction_requirements=PredictionRequirements(
-                        target=PredictionTargetType.TIME_SERIES, horizon=HorizonType.TIME_INDEX
-                    ),
-                    treatment_effects_requirements=TreatmentEffectsRequirements(
-                        treatment_type=TreatmentType.TIME_SERIES, treatment_value_type=treatment_value_type
-                    ),
-                )
-                requirements_checker = RequirementsChecker()
-                mock_temporal_treatments = Mock(all_categorical_features=False)
-                mock_temporal_treatments.features = {
-                    "dummy1": Mock(feature_type="dummy"),
-                    "dummy2": Mock(feature_type="dummy"),
-                }
-                data = MockDataset(
-                    temporal_covariates=Mock(),
-                    temporal_targets=Mock(),
-                    temporal_treatments=mock_temporal_treatments,
-                )
 
-                with pytest.raises(RuntimeError) as excinfo:
-                    requirements_checker.check_data_requirements(requirements, data, horizon=Mock())
-                assert "treatments must all be categorical" in str(excinfo.value).lower()
-
-            def test_treatment_value_binary_extra_check(self):
-                requirements = Requirements(
-                    dataset_requirements=DatasetRequirements(),
-                    prediction_requirements=PredictionRequirements(
-                        target=PredictionTargetType.TIME_SERIES, horizon=HorizonType.TIME_INDEX
-                    ),
-                    treatment_effects_requirements=TreatmentEffectsRequirements(
-                        treatment_type=TreatmentType.TIME_SERIES, treatment_value_type=TreatmentValueType.BINARY
-                    ),
-                )
-                requirements_checker = RequirementsChecker()
-                mock_temporal_treatments = Mock(all_categorical_features=True)
-
-                def _f(_):
-                    return (
-                        x
-                        for x in (
-                            Mock(df=pd.DataFrame({"a": [0.0, 1.0, 0.0], "b": [0.0, 1.0, 1.0]})),
-                            Mock(df=pd.DataFrame({"a": [0.0, 1.0, 0.0], "b": [0.0, 1.0, 999.0]})),
-                        )
-                    )
-
-                mock_temporal_treatments.__iter__ = _f
-
-                data = MockDataset(
-                    temporal_covariates=Mock(),
-                    temporal_targets=Mock(),
-                    temporal_treatments=mock_temporal_treatments,
-                )
-
-                with pytest.raises(RuntimeError) as excinfo:
-                    requirements_checker.check_data_requirements(requirements, data, horizon=Mock())
-                assert "only contain values (0., 1.)" in str(excinfo.value).lower()
-
-
-class TestPredictionRequirements:
+class TestPredictorModelRequirements:
     def test_prediction_requirements_set(self):
         predictor = Mock()
         predictor.requirements = Requirements(prediction_requirements=None)
 
-        requirements_checker = RequirementsChecker()
-
         with pytest.raises(RuntimeError) as excinfo:
-            requirements_checker.check_prediction_requirements(predictor)
+            RequirementsChecker.check_predictor_model_requirements(predictor)
         assert "must have prediction requirements" in str(excinfo.value).lower()
 
 
@@ -807,12 +843,11 @@ class TestIntegration:
         )
         def test_requires_temporal_containers_have_same_time_index(self, data, expect_str_1, expect_str_2):
             req = Requirements(
-                dataset_requirements=DatasetRequirements(requires_temporal_containers_have_same_time_index=True)
+                dataset_requirements=DatasetRequirements(requires_all_temporal_containers_shares_index=True)
             )
 
-            requirements_checker = RequirementsChecker()
             with pytest.raises(RuntimeError) as excinfo:
-                requirements_checker.check_data_requirements(req, data)
+                RequirementsChecker.check_data_requirements_general(req, data)
             assert (
                 "same time index" in str(excinfo.value)
                 and expect_str_1 in str(excinfo.value)

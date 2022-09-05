@@ -1,10 +1,8 @@
-from unittest.mock import Mock
-
 import numpy as np
 import pandas as pd
 import pytest
 
-from clairvoyance2.data import Dataset, TimeSeriesSamples
+from clairvoyance2.data import TimeSeriesSamples
 from clairvoyance2.metrics import mse_ts
 
 
@@ -62,18 +60,8 @@ class TestIntegration:
             ],
         )
         def test_time_series_samples_aligned(self, dfs_true, dfs_pred, expected_value):
-            data_true = Dataset(
-                temporal_covariates=Mock(
-                    TimeSeriesSamples, n_samples=len(dfs_true), sample_indices=list(range(len(dfs_true)))
-                ),
-                temporal_targets=TimeSeriesSamples(dfs_true),
-            )
-            data_pred = Dataset(
-                temporal_covariates=Mock(
-                    TimeSeriesSamples, n_samples=len(dfs_pred), sample_indices=list(range(len(dfs_pred)))
-                ),
-                temporal_targets=TimeSeriesSamples(dfs_pred),
-            )
+            data_true = TimeSeriesSamples(dfs_true)
+            data_pred = TimeSeriesSamples(dfs_pred)
 
             metric = mse_ts(data_true, data_pred)
 
@@ -131,18 +119,8 @@ class TestIntegration:
             ],
         )
         def test_time_series_samples_not_aligned(self, dfs_true, dfs_pred, expected_value):
-            data_true = Dataset(
-                temporal_covariates=Mock(
-                    TimeSeriesSamples, n_samples=len(dfs_true), sample_indices=list(range(len(dfs_true)))
-                ),
-                temporal_targets=TimeSeriesSamples(dfs_true),
-            )
-            data_pred = Dataset(
-                temporal_covariates=Mock(
-                    TimeSeriesSamples, n_samples=len(dfs_pred), sample_indices=list(range(len(dfs_pred)))
-                ),
-                temporal_targets=TimeSeriesSamples(dfs_pred),
-            )
+            data_true = TimeSeriesSamples(dfs_true)
+            data_pred = TimeSeriesSamples(dfs_pred)
 
             metric = mse_ts(data_true, data_pred)
 

@@ -17,7 +17,6 @@ import numpy as np
 import pandas as pd
 
 from . import df_constraints as dfc
-from .constants import T_CategoricalDef
 
 # TODO: May get rid of this Generic[TIndexItem, TColumnItem], not hugely useful.
 TIndexItem = TypeVar("TIndexItem")
@@ -29,7 +28,6 @@ TColumnIndexers = Union[TColumnItem, slice, Iterable]
 
 class CustomGetItemMixin(Generic[TIndexItem, TColumnItem]):
     _data: pd.DataFrame
-    categorical_def: Any  # NOTE: Should be `T_CategoricalDef`, but currently can't make work with mypy.
 
     # Define this in inheriting classes.
     def _getitem_index(self, index_key: TIndexIndexers):
@@ -49,14 +47,13 @@ class CustomGetItemMixin(Generic[TIndexItem, TColumnItem]):
         return new_data
 
     # A helper for the straight-forward (_data is simple DF) case.
-    def _getitem_column_helper(self, column_key: TColumnIndexers) -> Tuple[pd.DataFrame, T_CategoricalDef]:
+    def _getitem_column_helper(self, column_key: TColumnIndexers) -> pd.DataFrame:
         new_data: pd.DataFrame = self._data.loc[:, column_key]
         if isinstance(new_data, pd.Series):
             # Handle the case of where single item indexer leads to a pd.Series being returned, by indexing such that
             # a pd.DataFrame is returned.
             new_data = self._data.loc[:, [column_key]]
-        new_categorical_def = {col: val for col, val in self.categorical_def.items() if col in new_data.columns}
-        return new_data, new_categorical_def
+        return new_data
 
     def _getitem_index_then_column_key(self, index_key, column_key):
         # First create a new temporary object with the new columns:
@@ -183,4 +180,9 @@ class SupportsNewLike(ABC):
     @staticmethod
     @abstractmethod
     def new_like(like: Any, **kwargs) -> "SupportsNewLike":
+        ...
+
+    @staticmethod
+    @abstractmethod
+    def new_empty_like(like: Any, **kwargs) -> "SupportsNewLike":
         ...

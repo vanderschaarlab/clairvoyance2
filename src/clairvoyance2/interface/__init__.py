@@ -1,4 +1,4 @@
-from .horizon import Horizon, HorizonType, NStepAheadHorizon, TimeIndexHorizon
+from .horizon import Horizon, HorizonOpts, NStepAheadHorizon, TimeIndexHorizon
 from .model import (
     BaseModel,
     PredictorModel,
@@ -12,9 +12,9 @@ from .model import (
 )
 from .requirements import (
     DatasetRequirements,
+    DataStructureOpts,
+    DataValueOpts,
     PredictionRequirements,
-    PredictionTargetType,
-    PredictionTaskType,
     Requirements,
     TreatmentEffectsRequirements,
 )
@@ -23,12 +23,12 @@ from .saving import SavableModelMixin, SavableTorchModelMixin
 __all__ = [
     "BaseModel",
     "DatasetRequirements",
+    "DataStructureOpts",
+    "DataValueOpts",
     "Horizon",
-    "HorizonType",
+    "HorizonOpts",
     "NStepAheadHorizon",
     "PredictionRequirements",
-    "PredictionTargetType",
-    "PredictionTaskType",
     "PredictorModel",
     "Requirements",
     "SavableModelMixin",

@@ -68,6 +68,13 @@ class UpdateFromArrayExtension:
         new_index = get_n_step_ahead_index(self.time_index, n_step=n_step)
         expected_n_timesteps = len(new_index)
 
+        # Discard any past time indices which are not found in the new n-step-ahead index.
+        first_new_index = list(new_index)[0]
+        if first_new_index in self.time_index:
+            self.df = self.df.loc[first_new_index:, :]
+        else:
+            self.df = self.df.iloc[:0, :]
+
         if update_array.shape[0] < expected_n_timesteps:
             raise ValueError(
                 f"Expected at least {expected_n_timesteps} timesteps in update array but only "
@@ -105,12 +112,27 @@ class UpdateFromSequenceOfArraysExtension:
         padding_indicator: float = DEFAULT_PADDING_INDICATOR,
     ) -> None:
         self._check_n_samples_in_update_array_seq(update_array_sequence)
-        assert self.n_samples == len(time_index_sequence)
+        if self.n_samples != len(time_index_sequence):
+            raise ValueError(
+                "Expected number of samples to correspond to the len of time index sequence "
+                f"was {self.n_samples} and {len(time_index_sequence)} correspondingly"
+            )
 
         for sample_idx, sample_array, sample_time_index in zip(
             self.sample_indices, update_array_sequence, time_index_sequence
         ):
-            assert len(sample_array) == len(sample_time_index)
+            if sample_array.ndim != 2:
+                raise ValueError(
+                    "Expected number of dimensions of update arrays to be 2 (for each sample), "
+                    f"was {sample_array.ndim}"
+                )
+
+            # In case we have padding in the update array that goes beyond the time index length, trim sample array.
+            if len(sample_time_index) < len(sample_array):
+                selector = ~tl.any(tl.eq_indicator(sample_array, padding_indicator), axis=-1)
+                sample_array = sample_array[selector, :]
+            assert len(sample_time_index) >= len(sample_array)
+
             if isinstance(sample_array, torch.Tensor):
                 sample_array = sample_array.detach().cpu().numpy()
 

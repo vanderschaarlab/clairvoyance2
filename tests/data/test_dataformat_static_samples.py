@@ -3,7 +3,6 @@ import pandas as pd
 import pytest
 
 from clairvoyance2.data.dataformat import StaticSamples
-from clairvoyance2.data.feature import FeatureType
 
 # pylint: disable=redefined-outer-name
 # ^ Otherwise pylint trips up on pytest fixtures.
@@ -174,15 +173,14 @@ class TestIntegration:
 
     def test_features(self):
         data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": ["a", "b", "c"]})
-        categorical_features = ["col_2"]
-        ss = StaticSamples(data=data, categorical_features=categorical_features)
+        ss = StaticSamples(data=data)
 
         features = ss.features
 
         assert isinstance(features, dict)
         assert len(features) == 2
-        assert features["col_1"].feature_type == FeatureType.NUMERIC
-        assert features["col_2"].feature_type == FeatureType.CATEGORICAL
+        assert features["col_1"].numeric_compatible
+        assert features["col_2"].categorical_compatible
 
     def test_to_numpy(self):
         data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
@@ -204,6 +202,34 @@ class TestIntegration:
         assert id(ss_copy.df) != id(ss.df)
         assert ss.df.loc[0, "col_1"] == 1.0
         assert ss_copy.df.loc[0, "col_1"] == 12345.0
+
+    def test_new_like(self):
+        data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
+        ss = StaticSamples(data)
+
+        new = ss.new_like(ss, data=data + 1)
+
+        assert isinstance(new, StaticSamples)
+        assert new.n_samples == ss.n_samples
+        assert new.n_features == ss.n_features
+        assert new.df.shape == ss.df.shape
+        assert list(new.features.keys()) == list(ss.features.keys())
+        assert (new.df.dtypes == ss.df.dtypes).all()
+        assert (new.df == data + 1).all().all()
+
+    def test_new_empty_like(self):
+        data = pd.DataFrame({"col_1": [1.0, 2.0, 3.0], "col_2": [11.0, 22.0, 33.0]})
+        ss = StaticSamples(data)
+
+        new = ss.new_empty_like(ss)
+
+        assert isinstance(new, StaticSamples)
+        assert new.n_samples == 0
+        assert new.n_features == ss.n_features
+        assert new.df.shape == (0, ss.df.shape[1])
+        assert list(new.features.keys()) == list(ss.features.keys())
+        assert (new.df.dtypes == ss.df.dtypes).all()
+        assert new.df.empty is True
 
     class TestMutation:
         def test_mutate_df_loc(self):

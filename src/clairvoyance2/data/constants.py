@@ -1,5 +1,5 @@
 import warnings
-from typing import Iterable, Mapping, Sequence, Tuple, Union
+from typing import Sequence, Union
 
 import numpy as np
 import pandas as pd
@@ -20,9 +20,6 @@ T_FeatureContainer = Union[pd.Series]  # pyright: ignore  # NOTE: May expand thi
 T_FeatureIndexDtype = Union[int, str]
 T_FeatureIndexDtype_AsTuple = tuple([int, str])  # NOTE: Must match the above. For pandas check, so str -> object.
 
-T_CategoricalDef = Mapping[T_FeatureIndexDtype, Tuple[T_CategoricalDtype, ...]]
-T_CategoricalDef_Arg = Union[Iterable[T_FeatureIndexDtype], T_CategoricalDef]
-
 T_SamplesIndexDtype = Union[int]  # pyright: ignore
 T_SamplesIndexDtype_AsTuple = tuple([int])  # NOTE: Must match the above.
 
@@ -30,21 +27,30 @@ T_SamplesIndexDtype_AsTuple = tuple([int])  # NOTE: Must match the above.
 T_TSIndexDtype = Union[int, float, np.datetime64]
 T_TSIndexDtype_AsTuple = tuple([int, float, np.datetime64])  # NOTE: Must match the above.
 
+T_ElementsObjectType = Union[str]  # pyright: ignore
+T_ElementsObjectType_AsTuple = tuple([str])  # pyright: ignore
+
 with warnings.catch_warnings():
     # This is to suppress (expected) FutureWarnings for index types like pd.Int64Index.
     warnings.filterwarnings("ignore", message=r".*Use pandas.Index.*", category=FutureWarning)
 
-    T_TSIndexClass = Union[
-        pd.RangeIndex,
-        pd.DatetimeIndex,
-        pd.Int64Index,
-        pd.UInt64Index,
-        pd.Float64Index,
-        pd.Index,
-        "pd.NumericIndex",
-    ]
-
-    # NOTE: Must match T_TS_Index.
+    if "NumericIndex" not in dir(pd):
+        T_TSIndexClass = Union[
+            pd.RangeIndex,
+            pd.DatetimeIndex,
+            pd.Int64Index,
+            pd.UInt64Index,
+            pd.Float64Index,
+        ]
+    else:
+        T_TSIndexClass = Union[  # type: ignore
+            pd.RangeIndex,
+            pd.DatetimeIndex,
+            pd.Int64Index,
+            pd.UInt64Index,
+            pd.Float64Index,
+            pd.NumericIndex,  # Future-proofing.
+        ]
     T_TSIndexClass_AsTuple = (
         pd.RangeIndex,
         pd.DatetimeIndex,
@@ -55,11 +61,17 @@ with warnings.catch_warnings():
         # NOTE: Other candidates: TimedeltaIndex, PeriodIndex.
     )
 
-    T_FeatureIndexClass = Union[
-        pd.Int64Index,
-        pd.UInt64Index,
-        "pd.NumericIndex",
-    ]
+    if "NumericIndex" not in dir(pd):
+        T_FeatureIndexClass = Union[
+            pd.Int64Index,
+            pd.UInt64Index,
+        ]
+    else:
+        T_FeatureIndexClass = Union[  # type: ignore
+            pd.Int64Index,
+            pd.UInt64Index,
+            pd.NumericIndex,  # Future-proofing.
+        ]
     T_FeatureIndexClass_AsTuple = (
         (
             pd.Int64Index,
@@ -68,12 +80,19 @@ with warnings.catch_warnings():
         ),
     )
 
-    T_SampleIndexClass = Union[
-        pd.RangeIndex,
-        pd.Int64Index,
-        pd.UInt64Index,
-        "pd.NumericIndex",
-    ]
+    if "NumericIndex" not in dir(pd):
+        T_SampleIndexClass = Union[
+            pd.RangeIndex,
+            pd.Int64Index,
+            pd.UInt64Index,
+        ]
+    else:
+        T_SampleIndexClass = Union[  # type: ignore
+            pd.RangeIndex,
+            pd.Int64Index,
+            pd.UInt64Index,
+            pd.NumericIndex,
+        ]
     T_SampleIndexClass_AsTuple = (
         pd.RangeIndex,
         pd.Int64Index,

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from clairvoyance2.data import Dataset, FeatureType, StaticSamples, TimeSeriesSamples
+from clairvoyance2.data import Dataset, StaticSamples, TimeSeriesSamples
 from clairvoyance2.preprocessing import (
     AddStaticCovariatesTC,
     AddTimeIndexFeatureTC,
@@ -36,7 +36,7 @@ class TestIntegration:
         )
         def test_extract_subset(self, targets, expected_target_features, expected_covariate_features, three_mixed_dfs):
             extractor = ExtractTargetsTC(params=dict(targets=targets))
-            temporal_covariates = TimeSeriesSamples(three_mixed_dfs, categorical_features=["c"])
+            temporal_covariates = TimeSeriesSamples(three_mixed_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=None, temporal_targets=None)
 
             data_extracted = extractor.fit_transform(data)
@@ -44,17 +44,17 @@ class TestIntegration:
             assert data_extracted.temporal_covariates is not None
             assert data_extracted.temporal_targets is not None
 
-            assert len(data_extracted.temporal_targets.feature_types) == len(expected_target_features)
-            assert [f in expected_target_features for f in data_extracted.temporal_targets.feature_types]
+            assert len(data_extracted.temporal_targets.features) == len(expected_target_features)
+            assert [f in expected_target_features for f in data_extracted.temporal_targets.features.keys()]
 
-            assert len(data_extracted.temporal_covariates.feature_types) == len(expected_covariate_features)
-            assert [f in expected_covariate_features for f in data_extracted.temporal_covariates.feature_types]
+            assert len(data_extracted.temporal_covariates.features) == len(expected_covariate_features)
+            assert [f in expected_covariate_features for f in data_extracted.temporal_covariates.features.keys()]
 
         def test_extract_all(self, three_mixed_dfs):
             # NOTE: This case of no temporal covariates isn't properly handled elsewhere, needs to be handled properly.
 
             extractor = ExtractTargetsTC(params=dict(targets=["a", "b", "c", "d"]))
-            temporal_covariates = TimeSeriesSamples(three_mixed_dfs, categorical_features=["c"])
+            temporal_covariates = TimeSeriesSamples(three_mixed_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=None, temporal_targets=None)
 
             with pytest.raises(NotImplementedError) as excinfo:
@@ -63,7 +63,7 @@ class TestIntegration:
 
         def test_extract_none(self, three_mixed_dfs):
             extractor = ExtractTargetsTC(params=dict(targets=[]))
-            temporal_covariates = TimeSeriesSamples(three_mixed_dfs, categorical_features=["c"])
+            temporal_covariates = TimeSeriesSamples(three_mixed_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=None, temporal_targets=None)
 
             data_extracted = extractor.fit_transform(data)
@@ -71,8 +71,8 @@ class TestIntegration:
             assert data_extracted.temporal_covariates is not None
             assert data_extracted.temporal_targets is None
 
-            assert len(data_extracted.temporal_covariates.feature_types) == len(["a", "b", "c", "d"])
-            assert [f in ["a", "b", "c", "d"] for f in data_extracted.temporal_covariates.feature_types]
+            assert len(data_extracted.temporal_covariates.features) == len(["a", "b", "c", "d"])
+            assert [f in ["a", "b", "c", "d"] for f in data_extracted.temporal_covariates.features.keys()]
 
     class TestExtractTreatmentsTC:
         @pytest.mark.parametrize(
@@ -90,7 +90,7 @@ class TestIntegration:
             self, treatments, expected_treatment_features, expected_covariate_features, three_mixed_dfs
         ):
             extractor = ExtractTreatmentsTC(params=dict(treatments=treatments))
-            temporal_covariates = TimeSeriesSamples(three_mixed_dfs, categorical_features=["c"])
+            temporal_covariates = TimeSeriesSamples(three_mixed_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=None, temporal_treatments=None)
 
             data_extracted = extractor.fit_transform(data)
@@ -98,11 +98,11 @@ class TestIntegration:
             assert data_extracted.temporal_covariates is not None
             assert data_extracted.temporal_treatments is not None
 
-            assert len(data_extracted.temporal_treatments.feature_types) == len(expected_treatment_features)
-            assert [f in expected_treatment_features for f in data_extracted.temporal_treatments.feature_types]
+            assert len(data_extracted.temporal_treatments.features) == len(expected_treatment_features)
+            assert [f in expected_treatment_features for f in data_extracted.temporal_treatments.features.keys()]
 
-            assert len(data_extracted.temporal_covariates.feature_types) == len(expected_covariate_features)
-            assert [f in expected_covariate_features for f in data_extracted.temporal_covariates.feature_types]
+            assert len(data_extracted.temporal_covariates.features) == len(expected_covariate_features)
+            assert [f in expected_covariate_features for f in data_extracted.temporal_covariates.features.keys()]
 
     class TestAddTimeIndexFeatureTC:
         @pytest.mark.parametrize(
@@ -182,10 +182,10 @@ class TestIntegration:
 
             if params["add_time_index"] is True:
                 assert "time_index" in data.temporal_covariates.features
-                assert data.temporal_covariates.features["time_index"].feature_type == FeatureType.NUMERIC
+                assert data.temporal_covariates.features["time_index"].numeric_compatible
                 for ts in data.temporal_covariates:
                     assert "time_index" in ts.features
-                    assert ts.features["time_index"].feature_type == FeatureType.NUMERIC
+                    assert ts.features["time_index"].numeric_compatible
                     assert "time_index" in ts.df
                 assert all(data.temporal_covariates[0].df["time_index"] == expected_time_index_sample_0)
                 assert all(data.temporal_covariates[1].df["time_index"] == expected_time_index_sample_1)
@@ -194,10 +194,10 @@ class TestIntegration:
 
             if params["add_time_delta"] is True:
                 assert "time_delta" in data.temporal_covariates.features
-                assert data.temporal_covariates.features["time_delta"].feature_type == FeatureType.NUMERIC
+                assert data.temporal_covariates.features["time_delta"].numeric_compatible
                 for ts in data.temporal_covariates:
                     assert "time_delta" in ts.features
-                    assert ts.features["time_delta"].feature_type == FeatureType.NUMERIC
+                    assert ts.features["time_delta"].numeric_compatible
                     assert "time_delta" in ts.df
                 assert all(data.temporal_covariates[0].df["time_delta"] == expected_time_delta_sample_0)
                 assert all(data.temporal_covariates[1].df["time_delta"] == expected_time_delta_sample_1)
@@ -465,8 +465,8 @@ class TestIntegration:
                 drop_static_covariates=False,
             )
             data = Dataset(
-                temporal_covariates=TimeSeriesSamples(t_cov_dfs, categorical_features=["b"]),
-                static_covariates=StaticSamples(s_cov_df, categorical_features=["d"]),
+                temporal_covariates=TimeSeriesSamples(t_cov_dfs),
+                static_covariates=StaticSamples(s_cov_df),
             )
             transformer = AddStaticCovariatesTC(params=params)
 
@@ -491,8 +491,8 @@ class TestIntegration:
             ]
             for sample_idx in [0, 1]:
                 assert (data_new.temporal_covariates[sample_idx].df == expected_new_t_cov_dfs[sample_idx]).all().all()
-            assert data_new.temporal_covariates.features["b"].feature_type == FeatureType.CATEGORICAL
-            assert data_new.temporal_covariates.features["static_d"].feature_type == FeatureType.CATEGORICAL
+            assert data_new.temporal_covariates.features["b"].categorical_compatible
+            assert data_new.temporal_covariates.features["static_d"].categorical_compatible
 
         def test_raise_value_clashing_feature_names(self):
             # Arrange:

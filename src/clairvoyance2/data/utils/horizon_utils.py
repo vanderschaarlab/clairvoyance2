@@ -10,7 +10,7 @@ _TPerTimeSeriesFunction = Callable[[TimeSeries, T_TSIndexClass, bool, List[TimeS
 # TODO: Test.
 
 
-def _take_all_timesteps_before_horizon_0th_index(
+def _take_all_before_horizon_start(
     time_series: TimeSeries, time_index: T_TSIndexClass, inplace: bool, list_ts: List[TimeSeries]
 ) -> List[TimeSeries]:
     take_up_to_index = time_series.time_index[time_series.time_index < time_index[0]][-1]
@@ -23,7 +23,7 @@ def _take_all_timesteps_before_horizon_0th_index(
     return list_ts
 
 
-def _take_last_timestep_before_horizon_0th_index(
+def _take_one_before_horizon_start(
     time_series: TimeSeries, time_index: T_TSIndexClass, inplace: bool, list_ts: List[TimeSeries]
 ) -> List[TimeSeries]:
     take_at_index = time_series.time_index[time_series.time_index < time_index[0]][-1]
@@ -36,10 +36,23 @@ def _take_last_timestep_before_horizon_0th_index(
     return list_ts
 
 
-def _take_all_timesteps_after_horizon_0th_index(
+def _take_all_from_horizon_start(
     time_series: TimeSeries, time_index: T_TSIndexClass, inplace: bool, list_ts: List[TimeSeries]
 ) -> List[TimeSeries]:
     take_from_index_on = time_series.time_index[time_series.time_index >= time_index[0]][0]
+    if inplace is True:
+        time_series.apply_time_indexing(slice(take_from_index_on, None), inplace=True)
+    else:
+        ts_new = time_series.apply_time_indexing(slice(take_from_index_on, None), inplace=False)
+        assert isinstance(ts_new, TimeSeries)
+        list_ts.append(ts_new)
+    return list_ts
+
+
+def _take_all_from_one_before_horizon_start(
+    time_series: TimeSeries, time_index: T_TSIndexClass, inplace: bool, list_ts: List[TimeSeries]
+) -> List[TimeSeries]:
+    take_from_index_on = time_series.time_index[time_series.time_index < time_index[0]][-1]
     if inplace is True:
         time_series.apply_time_indexing(slice(take_from_index_on, None), inplace=True)
     else:
@@ -70,33 +83,44 @@ class time_series_samples:
             return TimeSeriesSamples.new_like(time_series_samples_, data=list_ts)
 
     @staticmethod
-    def take_all_timesteps_before_horizon_begins(
+    def take_all_before_horizon_start(
         time_series_samples_: TimeSeriesSamples, horizon: TimeIndexHorizon, inplace: bool = False
     ):
         return time_series_samples._horizon_interaction_time_series_samples(
-            time_series_samples_, horizon, inplace, per_time_series_method=_take_all_timesteps_before_horizon_0th_index
+            time_series_samples_, horizon, inplace, per_time_series_method=_take_all_before_horizon_start
         )
 
     @staticmethod
-    def take_last_timestep_before_horizon_begins(
+    def take_one_before_horizon_start(
         time_series_samples_: TimeSeriesSamples, horizon: TimeIndexHorizon, inplace: bool = False
     ):
         return time_series_samples._horizon_interaction_time_series_samples(
-            time_series_samples_, horizon, inplace, per_time_series_method=_take_last_timestep_before_horizon_0th_index
+            time_series_samples_, horizon, inplace, per_time_series_method=_take_one_before_horizon_start
         )
 
     @staticmethod
-    def take_all_timesteps_after_horizon_begins(
+    def take_all_from_horizon_start(
         time_series_samples_: TimeSeriesSamples, horizon: TimeIndexHorizon, inplace: bool = False
     ):
         return time_series_samples._horizon_interaction_time_series_samples(
-            time_series_samples_, horizon, inplace, per_time_series_method=_take_all_timesteps_after_horizon_0th_index
+            time_series_samples_, horizon, inplace, per_time_series_method=_take_all_from_horizon_start
+        )
+
+    @staticmethod
+    def take_all_from_one_before_horizon_start(
+        time_series_samples_: TimeSeriesSamples, horizon: TimeIndexHorizon, inplace: bool = False
+    ):
+        return time_series_samples._horizon_interaction_time_series_samples(
+            time_series_samples_,
+            horizon,
+            inplace,
+            per_time_series_method=_take_all_from_one_before_horizon_start,
         )
 
 
 class dataset:
     @staticmethod
-    def take_temporal_data_before_horizon_begins(
+    def take_temporal_data_before_horizon_start(
         data: Dataset, horizon: TimeIndexHorizon, ignore_containers: Sequence[str] = tuple(), inplace: bool = False
     ) -> Union[Dataset, None]:
         if inplace is False:
@@ -114,7 +138,7 @@ class dataset:
             if len(ignore_containers) > 0 and container_name in ignore_containers:
                 skip = True
             if not skip:
-                time_series_samples.take_all_timesteps_before_horizon_begins(container, horizon, inplace=True)
+                time_series_samples.take_all_before_horizon_start(container, horizon, inplace=True)
 
         if inplace is False:
             return data

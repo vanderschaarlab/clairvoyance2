@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from dotmap import DotMap
 
-from ..data import Dataset, TimeSeries
+from ..data import Dataset, StaticSamples, TimeSeries, TimeSeriesSamples
 from ..data.constants import (
     T_ContainerInitializable,
     T_SamplesIndexDtype,
@@ -16,10 +16,11 @@ from ..data.constants import (
 from ..utils.common import safe_init_dotmap
 from ..utils.dev import function_is_notimplemented_stub, raise_not_implemented
 from .horizon import Horizon, TimeIndexHorizon
-from .requirements import Requirements, RequirementsChecker, TreatmentType
+from .requirements import DataStructureOpts, Requirements, RequirementsChecker
 
 TParams = Dict[str, Any]  # TODO: May constrain this.
 TDefaultParams = Union[TParams, NamedTuple]
+TPredictOutput = Union[TimeSeriesSamples, StaticSamples]
 
 
 class BaseModel(ABC):
@@ -32,7 +33,6 @@ class BaseModel(ABC):
         self.inferred_params: DotMap = safe_init_dotmap(dict(), _dynamic=False)
         self.check_model_requirements()
         self._fit_called = False
-        super().__init__()
 
     def _process_params(self, params: Optional[TParams]) -> DotMap:
         if self.check_unknown_params is False and len(self.DEFAULT_PARAMS) > 0:
@@ -63,11 +63,11 @@ class BaseModel(ABC):
     def check_model_requirements(self) -> None:  # pragma: no cover
         ...
 
-    def check_data_requirements(self, data: Dataset, **kwargs):
-        RequirementsChecker.check_data_requirements(self.requirements, data, **kwargs)
+    def check_data_requirements_general(self, data: Dataset, **kwargs):
+        RequirementsChecker.check_data_requirements_general(self.requirements, data, **kwargs)
 
     def fit(self, data: Dataset) -> "BaseModel":
-        self.check_data_requirements(data)
+        self.check_data_requirements_general(data)
         result = self._fit(data)
         self._fit_called = True
         return result
@@ -97,10 +97,14 @@ class BaseModel(ABC):
 
 
 class TransformerModel(BaseModel, ABC):
+    def check_data_requirements_transform(self, data: Dataset, **kwargs):
+        RequirementsChecker.check_data_requirements_transform(self.requirements, data, **kwargs)
+
     def transform(self, data: Dataset) -> Dataset:
         if not self._fit_called:
             raise RuntimeError("Must call `fit` before calling `transform`")
-        self.check_data_requirements(data)
+        self.check_data_requirements_general(data)
+        self.check_data_requirements_transform(data)
         return self._transform(data)
 
     def inverse_transform(self, data: Dataset) -> Dataset:
@@ -108,7 +112,8 @@ class TransformerModel(BaseModel, ABC):
             raise NotImplementedError(f"`_inverse_transform` method was not implemented for {self.__class__.__name__}")
         if not self._fit_called:
             raise RuntimeError("Must call `fit` before calling `transform`")
-        self.check_data_requirements(data)
+        self.check_data_requirements_general(data)
+        self.check_data_requirements_transform(data)
         return self._inverse_transform(data)
 
     @abstractmethod
@@ -132,14 +137,18 @@ class TransformerModel(BaseModel, ABC):
 
 # TODO: Unit test once the interface is solidified.
 class PredictorModel(BaseModel, ABC):
-    def predict(self, data: Dataset, horizon: Horizon) -> Dataset:
+    def check_data_requirements_predict(self, data: Dataset, horizon: Horizon, **kwargs):
+        RequirementsChecker.check_data_requirements_predict(self.requirements, data, horizon, **kwargs)
+
+    def predict(self, data: Dataset, horizon: Horizon) -> TPredictOutput:
         if not self._fit_called:
             raise RuntimeError("Must call `fit` before calling `predict`")
-        self.check_data_requirements(data, horizon=horizon)
+        self.check_data_requirements_general(data, horizon=horizon)
+        self.check_data_requirements_predict(data, horizon=horizon)
         return self._predict(data, horizon)
 
     def fit(self, data: Dataset, horizon: Optional[Horizon] = None) -> "PredictorModel":
-        self.check_data_requirements(data, horizon=horizon)
+        self.check_data_requirements_general(data, horizon=horizon)
         result = self._fit(data, horizon=horizon)
         self._fit_called = True
         return result
@@ -149,10 +158,10 @@ class PredictorModel(BaseModel, ABC):
         ...
 
     @abstractmethod
-    def _predict(self, data: Dataset, horizon: Horizon) -> Dataset:  # pragma: no cover
+    def _predict(self, data: Dataset, horizon: Horizon) -> TPredictOutput:  # pragma: no cover
         ...
 
-    def fit_predict(self, data: Dataset, horizon: Horizon) -> Dataset:
+    def fit_predict(self, data: Dataset, horizon: Horizon) -> TPredictOutput:
         self.fit(data)
         return self.predict(data, horizon)
 
@@ -160,7 +169,7 @@ class PredictorModel(BaseModel, ABC):
         super().check_model_requirements()
 
         # Additional requirements for any PredictorModel:
-        RequirementsChecker.check_prediction_requirements(self)
+        RequirementsChecker.check_predictor_model_requirements(self)
 
 
 # TODO: Static counterfactual predictions / treatments case TBD.
@@ -172,6 +181,23 @@ TCounterfactualPredictions = Sequence[TimeSeries]
 
 
 class TreatmentEffectsModel(PredictorModel, ABC):
+    def check_data_requirements_predict_counterfactuals(
+        self,
+        data: Dataset,
+        sample_index: T_SamplesIndexDtype,
+        treatment_scenarios: TTreatmentScenarios,
+        horizon: Horizon,
+        **kwargs,
+    ):
+        RequirementsChecker.check_data_requirements_predict_counterfactuals(
+            self.requirements,
+            data=data,
+            sample_index=sample_index,
+            treatment_scenarios=treatment_scenarios,
+            horizon=horizon,
+            **kwargs,
+        )
+
     def predict_counterfactuals(
         self,
         data: Dataset,
@@ -184,14 +210,30 @@ class TreatmentEffectsModel(PredictorModel, ABC):
         data_processed, treatment_scenarios_processed = self._process_predict_counterfactuals_input(
             data, sample_index=sample_index, treatment_scenarios=treatment_scenarios, horizon=horizon
         )
-        self.check_data_requirements(data_processed, treatment_scenarios=treatment_scenarios_processed, horizon=horizon)
+        self.check_data_requirements_general(
+            data_processed,
+            horizon=horizon,
+            treatment_scenarios=treatment_scenarios_processed,
+        )
+        self.check_data_requirements_predict_counterfactuals(
+            data_processed,
+            horizon=horizon,
+            sample_index=sample_index,
+            treatment_scenarios=treatment_scenarios_processed,
+        )
         return self._predict_counterfactuals(data_processed, sample_index, treatment_scenarios_processed, horizon)
+
+    def fit(self, data: Dataset, horizon: Optional[Horizon] = None) -> "TreatmentEffectsModel":
+        self.check_data_requirements_general(data, horizon=horizon)
+        result = self._fit(data, horizon=horizon)
+        self._fit_called = True
+        return result
 
     @abstractmethod
     def _fit(self, data: Dataset, horizon: Optional[Horizon] = None) -> "TreatmentEffectsModel":  # pragma: no cover
         ...
 
-    # TODO: Test.
+    # TODO: Simplify this or move elsewhere. Test.
     def _process_predict_counterfactuals_input(
         self,
         data: Dataset,
@@ -214,7 +256,7 @@ class TreatmentEffectsModel(PredictorModel, ABC):
         if len(treatment_scenarios) == 0:
             raise ValueError("Must provide at least one treatment scenario")
         assert self.requirements.treatment_effects_requirements is not None
-        if self.requirements.treatment_effects_requirements.treatment_type == TreatmentType.TIME_SERIES:
+        if self.requirements.treatment_effects_requirements.treatment_data_structure == DataStructureOpts.TIME_SERIES:
             horizon_time_index = horizon.time_index_sequence[0]
             expect_timesteps = len(treatment_scenarios[0])
             if not all(len(t) == expect_timesteps for t in treatment_scenarios):
@@ -243,7 +285,7 @@ class TreatmentEffectsModel(PredictorModel, ABC):
                 list_ts.append(treatment_scenario_ts)
             return data[sample_index], list_ts
         else:
-            raise_not_implemented(f"predict_counterfactuals() for non-{str(TreatmentType.TIME_SERIES)}")
+            raise_not_implemented(f"predict_counterfactuals() for non-{str(DataStructureOpts.TIME_SERIES)}")
 
     @abstractmethod
     def _predict_counterfactuals(
@@ -259,4 +301,4 @@ class TreatmentEffectsModel(PredictorModel, ABC):
         super().check_model_requirements()
 
         # Additional requirements for any TreatmentEffectsModel:
-        RequirementsChecker.check_treatment_effects_requirements(self)
+        RequirementsChecker.check_treatment_effects_model_requirements(self)

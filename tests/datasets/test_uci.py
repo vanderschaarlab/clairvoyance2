@@ -21,6 +21,7 @@ def mock_dataset_root_dir(tmpdir, monkeypatch):
 class TestIntegration:
     @pytest.mark.internet
     @pytest.mark.slow
+    @pytest.mark.vslow
     def test_uci_diabetes_retrieve_works(self, mock_dataset_root_dir):
         uci = UCIDiabetesRetriever()
         ds = uci.retrieve()

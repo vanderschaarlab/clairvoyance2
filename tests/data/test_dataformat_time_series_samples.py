@@ -3,7 +3,6 @@ import pandas as pd
 import pytest
 
 from clairvoyance2.data.dataformat import TimeSeries, TimeSeriesSamples
-from clairvoyance2.data.feature import FeatureType
 
 # pylint: disable=redefined-outer-name
 # ^ Otherwise pylint trips up on pytest fixtures.
@@ -25,34 +24,13 @@ class TestIntegration:
             TimeSeriesSamples([TimeSeries(three_numeric_dfs[0]), TimeSeries(three_numeric_dfs[1])])
 
         def test_success_numeric_and_categorical(self):
-            categorical_def = {"b": ["1", "2"]}
             ts_0 = TimeSeries(
-                data=pd.DataFrame({"a": [1, 2, 3], "b": ["1", "2", "1"]}), categorical_features=categorical_def
+                data=pd.DataFrame({"a": [1, 2, 3], "b": ["1", "2", "1"]}),
             )
             ts_1 = TimeSeries(
-                data=pd.DataFrame({"a": [7, 8, 9], "b": ["1", "1", "1"]}), categorical_features=categorical_def
+                data=pd.DataFrame({"a": [7, 8, 9], "b": ["1", "1", "1"]}),
             )
             TimeSeriesSamples(data=[ts_0, ts_1])
-
-        def test_success_numeric_and_categorical_explicit_categories_passed(self):
-            categorical_def = {"b": ["1", "2"]}
-            ts_0 = TimeSeries(
-                data=pd.DataFrame({"a": [1, 2, 3], "b": ["1", "2", "1"]}), categorical_features=categorical_def
-            )
-            ts_1 = TimeSeries(
-                data=pd.DataFrame({"a": [7, 8, 9], "b": ["1", "1", "1"]}), categorical_features=categorical_def
-            )
-            TimeSeriesSamples(data=[ts_0, ts_1], categorical_features=categorical_def)
-
-        def test_fails_categories_mismatch(self):
-            ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}))
-            ts_1 = TimeSeries(
-                data=pd.DataFrame({"a": [7, 8, 9], "b": ["1", "1", "1"]}), categorical_features={"b": ["1"]}
-            )
-
-            with pytest.raises(TypeError) as excinfo:
-                TimeSeriesSamples(data=[ts_0, ts_1])
-            assert "incompatible" in str(excinfo.value).lower()
 
         @pytest.mark.parametrize("sample_indices", [[3, 4], [0, 1]])
         @pytest.mark.parametrize(
@@ -129,16 +107,16 @@ class TestIntegration:
         assert "not set" in str(excinfo.value).lower()
 
     def test_features(self):
-        ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1, 2, 2]}), categorical_features=["b"])
-        ts_1 = TimeSeries(data=pd.DataFrame({"a": [7, 8, 9], "b": [2, 2, 2]}), categorical_features=["b"])
+        ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1, 2, 2]}))
+        ts_1 = TimeSeries(data=pd.DataFrame({"a": [7, 8, 9], "b": [2, 2, 2]}))
         tss = TimeSeriesSamples(data=[ts_0, ts_1])
 
         features = tss.features
 
         assert isinstance(features, dict)
         assert len(features) == 2
-        assert features["a"].feature_type == FeatureType.NUMERIC
-        assert features["b"].feature_type == FeatureType.CATEGORICAL
+        assert features["a"].numeric_compatible
+        assert features["b"].categorical_compatible
 
     # --- Indexing-related ---
 
@@ -339,6 +317,33 @@ class TestIntegration:
 
         with pytest.raises(NotImplementedError):
             tss.index(None)
+
+    def test_new_like(self, three_numeric_dfs):
+        tss = TimeSeriesSamples([TimeSeries(three_numeric_dfs[0]), TimeSeries(three_numeric_dfs[1])])
+
+        new = tss.new_like(tss, data=[TimeSeries(three_numeric_dfs[1]), TimeSeries(three_numeric_dfs[2])])
+
+        assert isinstance(new, TimeSeriesSamples)
+        assert new.n_features == tss.n_features
+        assert new.n_samples == tss.n_samples
+        assert new.df.shape == tss.df.shape
+        assert list(new.features.keys()) == list(tss.features.keys())
+        assert (new.df.dtypes == tss.df.dtypes).all()
+        assert (new[0].df == TimeSeries(three_numeric_dfs[1]).df).all().all()
+        assert (new[1].df == TimeSeries(three_numeric_dfs[2]).df).all().all()
+
+    def test_new_empty_like(self, three_numeric_dfs):
+        tss = TimeSeriesSamples([TimeSeries(three_numeric_dfs[0]), TimeSeries(three_numeric_dfs[1])])
+
+        new = tss.new_empty_like(tss)
+
+        assert isinstance(new, TimeSeriesSamples)
+        assert new.n_features == tss.n_features
+        assert new.n_samples == tss.n_features  # NOTE: This behavior!
+        assert list(new.features.keys()) == list(tss.features.keys())
+        assert (new.df.dtypes == tss.df.dtypes).all()
+        assert new[0].df.empty is True
+        assert new[1].df.empty is True
 
     class TestMutation:
         def test_mutate_df_directly(self):

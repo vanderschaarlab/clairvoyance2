@@ -213,7 +213,6 @@ class TestInit:
             static_samples_init.assert_called_once_with(
                 static_covariates_data,
                 sample_indices=None,
-                categorical_features=tuple(),
                 missing_indicator=mock_missing_indicator,
             )
 
@@ -243,7 +242,6 @@ class TestInit:
             time_series_samples_init.assert_called_once_with(
                 temporal_targets_data,
                 sample_indices=None,
-                categorical_features=tuple(),
                 missing_indicator=mock_missing_indicator,
             )
 
@@ -285,7 +283,6 @@ class TestInit:
                     call(
                         static_covariates_data,
                         sample_indices=None,
-                        categorical_features=tuple(),
                         missing_indicator=mock_missing_indicator,
                     ),
                 ]
@@ -295,56 +292,14 @@ class TestInit:
                     call(
                         temporal_targets_data,
                         sample_indices=None,
-                        categorical_features=tuple(),
                         missing_indicator=mock_missing_indicator,
                     ),
                     call(
                         temporal_treatments_data,
                         sample_indices=None,
-                        categorical_features=tuple(),
                         missing_indicator=mock_missing_indicator,
                     ),
                 ]
-            )
-
-        def test_init_many_with_categorical(self, mocked_containers_for_init, monkeypatch):
-            (t_cov, *_) = mocked_containers_for_init
-            static_samples_init = Mock(return_value=None)
-            time_series_samples_init = Mock(return_value=None)
-            static_covariates_data = Mock()
-            temporal_targets_data = Mock()
-            temporal_treatments_data = Mock()
-            mock_missing_indicator = Mock()
-            categorical_features = dict(
-                temporal_covariates="c_t_cov",
-                static_covariates="c_s_cov",
-                temporal_targets="c_t_targ",
-                temporal_treatments="c_t_treat",
-            )
-            monkeypatch.setattr(
-                "clairvoyance2.data.dataformat.StaticSamples.__init__",
-                static_samples_init,
-                raising=True,
-            )
-            monkeypatch.setattr(
-                "clairvoyance2.data.dataformat.TimeSeriesSamples.__init__",
-                time_series_samples_init,
-                raising=True,
-            )
-            monkeypatch.setattr(
-                "clairvoyance2.data.dataset.Dataset.validate",
-                Mock(),
-                raising=True,
-            )
-
-            ds = Dataset(
-                temporal_covariates=t_cov,
-                static_covariates=static_covariates_data,
-                temporal_targets=temporal_targets_data,
-                temporal_treatments=temporal_treatments_data,
-                sample_indices=None,
-                categorical_features=categorical_features,
-                missing_indicator=mock_missing_indicator,
             )
 
             assert id(ds.temporal_covariates) == id(t_cov)
@@ -353,7 +308,6 @@ class TestInit:
                     call(
                         static_covariates_data,
                         sample_indices=None,
-                        categorical_features="c_s_cov",
                         missing_indicator=mock_missing_indicator,
                     ),
                 ]
@@ -363,13 +317,11 @@ class TestInit:
                     call(
                         temporal_targets_data,
                         sample_indices=None,
-                        categorical_features="c_t_targ",
                         missing_indicator=mock_missing_indicator,
                     ),
                     call(
                         temporal_treatments_data,
                         sample_indices=None,
-                        categorical_features="c_t_treat",
                         missing_indicator=mock_missing_indicator,
                     ),
                 ]
@@ -415,7 +367,6 @@ class TestInit:
                     call(
                         static_covariates_data,
                         sample_indices=sample_indices,
-                        categorical_features=tuple(),
                         missing_indicator=mock_missing_indicator,
                     ),
                 ]
@@ -425,51 +376,15 @@ class TestInit:
                     call(
                         temporal_targets_data,
                         sample_indices=sample_indices,
-                        categorical_features=tuple(),
                         missing_indicator=mock_missing_indicator,
                     ),
                     call(
                         temporal_treatments_data,
                         sample_indices=sample_indices,
-                        categorical_features=tuple(),
                         missing_indicator=mock_missing_indicator,
                     ),
                 ]
             )
-
-    @pytest.mark.parametrize(
-        "categorical_features",
-        [
-            dict(random="something"),
-            dict(
-                temporal_covariates="something",
-                random="something",
-                temporal_targets="something",
-                temporal_treatments="something",
-            ),
-            dict(
-                temporal_covariates="something",
-                static_covariates="something",
-                temporal_targets="something",
-                temporal_treatments="something",
-                random="something",
-            ),
-        ],
-    )
-    def test_categorical_features_arg_fails_wrong_container_name(
-        self, categorical_features, mocked_containers_for_init
-    ):
-        t_cov, s_cov, t_targ, t_treat = mocked_containers_for_init
-
-        with pytest.raises(ValueError) as excinfo:
-            Dataset(
-                temporal_covariates=t_cov,
-                static_covariates=s_cov,
-                temporal_targets=t_targ,
-                temporal_treatments=t_treat,
-                categorical_features=categorical_features,
-            )
-        assert "unexpected key" in str(excinfo.value).lower() and "categorical_features" in str(excinfo.value)
 
 
 def test_n_samples(mocked_containers_for_init):
@@ -608,9 +523,7 @@ def containers_for_dataset_init():
         ],
         sample_indices=sample_indices,
     )
-    s_cov = StaticSamples(
-        pd.DataFrame({"s_a": [0, 1, 0], "s_b": [33.0, 32.0, 21.0]}, index=sample_indices), categorical_features=["s_a"]
-    )
+    s_cov = StaticSamples(pd.DataFrame({"s_a": [0, 1, 0], "s_b": [33.0, 32.0, 21.0]}, index=sample_indices))
     t_targ = TimeSeriesSamples(
         [
             pd.DataFrame({"t": [1, 1, 0], "o": [1.1, 7.1, 3.1]}),
@@ -618,7 +531,6 @@ def containers_for_dataset_init():
             pd.DataFrame({"t": [1, 1, 0, 0, 0], "o": [1.2, 5.3, 5.1, 7.1, 9.1]}),
         ],
         sample_indices=sample_indices,
-        categorical_features=["t"],
     )
     t_treat = TimeSeriesSamples(
         [
@@ -661,7 +573,6 @@ class TestIntegration:
                 ],
                 dtype=int,
             )
-            categorical_features = dict(temporal_targets=["o"], temporal_treatments=[0, 3])
 
             # Act.
             ds = Dataset(
@@ -670,7 +581,6 @@ class TestIntegration:
                 temporal_targets=t_targ,
                 temporal_treatments=t_treat,
                 sample_indices=sample_indices,
-                categorical_features=categorical_features,
                 missing_indicator=np.nan,
             )
 
@@ -706,9 +616,6 @@ class TestIntegration:
             assert ds.static_covariates.n_features == 3
             assert ds.temporal_targets.n_features == 2
             assert ds.temporal_treatments.n_features == 4
-            # ---
-            assert "o" in ds.temporal_targets.categorical_def
-            assert 0 in ds.temporal_treatments.categorical_def and 3 in ds.temporal_treatments.categorical_def
 
     class TestSequenceAPI:
         def test_getitem_success(self, containers_for_dataset_init):
@@ -737,8 +644,6 @@ class TestIntegration:
             assert ds_item.static_covariates.n_features == 2
             assert ds_item.temporal_targets.n_features == 2
             assert ds_item.temporal_treatments.n_features == 1
-            assert "t" in ds_item.temporal_targets.categorical_def
-            assert "s_a" in ds_item.static_covariates.categorical_def
             assert ds_item.temporal_covariates.sample_indices == [index]
             assert ds_item.static_covariates.sample_indices == [index]
             assert ds_item.temporal_targets.sample_indices == [index]
