@@ -12,8 +12,23 @@
 
 [![Project generated with PyScaffold](https://img.shields.io/badge/-PyScaffold-005CA0?logo=pyscaffold)](https://pyscaffold.org/)
 
+
+
 # clairvoyance2
 
 > clairvoyance2: a Unified Toolkit for Medical Time Series
 
-Description TBC.
+**⚠️ The library is in pre-alpha / dev. API will change without warning.**
+
+**clairvoyance2** is a library that unifies time series tasks for the medicine and healthcare use case.  It provides tools for manipulating multi-dimensional time series, as well as static data, and implements models for: time series prediction, individualized treatment effects estimation (*upcoming*), time-to-event analysis (*upcoming*), and model interpretability (*upcoming*).  **clairvoyance2** is primarily focussed on machine learning (ML) models.
+
+
+
+## Installation
+
+`pip install https://github.com/vanderschaarlab/clairvoyance2.git`
+
+
+## Tutorials
+
+* [📔 Basic Usage Notebook](tutorials/basic_usage.ipynb)

@@ -1,3 +1,4 @@
+import math
 import os
 import tarfile
 from pathlib import Path
@@ -7,8 +8,8 @@ import numpy as np
 import pandas as pd
 import unlzw3
 
-from ..data import TDataset, TimeSeriesSamples
-from .dataset import DatasetRetriever
+from ..data import Dataset, TimeSeriesSamples
+from .dataset_retriever import DatasetRetriever
 
 _DEBUG = False
 
@@ -69,6 +70,15 @@ class UCIDiabetesRetriever(DatasetRetriever):
         "unspecified_special_event",
     ]
 
+    _timedelta_for_make_regular = pd.Timedelta(5, "h")
+
+    def __init__(
+        self, data_home: Optional[str] = None, make_regular: bool = False, use_int_index: bool = False
+    ) -> None:
+        self.make_regular = make_regular
+        self.use_int_index = use_int_index
+        super().__init__(data_home)
+
     @property
     def dataset_extracted_dir(self):
         return os.path.join(self.dataset_dir, "Diabetes-Data")
@@ -85,7 +95,7 @@ class UCIDiabetesRetriever(DatasetRetriever):
                 tar.extractall(self.dataset_dir)  # NOTE: Will extract into a subdirectory "Diabetes-Data/"
             os.remove(temp_file)
 
-    def process_individual_file(self, filepath) -> pd.DataFrame:
+    def process_individual_file(self, filepath: str) -> pd.DataFrame:
         if _DEBUG:
             print(f"Processing file: {filepath.split('/')[-1]}")
 
@@ -139,46 +149,68 @@ class UCIDiabetesRetriever(DatasetRetriever):
         # Sort index ascending.
         df_all_features.sort_index(inplace=True)
 
+        # Case: make_regular=True.
+        if self.make_regular:
+            full_range = df_all_features.index[-1] - df_all_features.index[0]
+            n_periods = math.ceil(full_range / self._timedelta_for_make_regular)
+            new_index = pd.date_range(
+                df_all_features.index[0], periods=n_periods + 1, freq=self._timedelta_for_make_regular
+            )
+            assert new_index[-1] >= df_all_features.index[-1]
+            df_all_features = df_all_features.reindex(new_index, method="nearest")
+
+        # Case use_int_index=True.
+        if self.use_int_index:
+            df_all_features.reset_index(drop=True, inplace=True)
+
         return df_all_features
 
     @staticmethod
     def _get_file_id_range():
         return range(1, 70 + 1)
 
+    def _get_cache_file_name(self, file_id: int) -> str:
+        return f"mr{self.make_regular}_uii{self.use_int_index}_{file_id}.pkl"
+
     def is_cached(self) -> bool:
         return all(
             [
-                os.path.exists(os.path.join(self.dataset_cache_dir, f"{file_id}.pkl"))
+                os.path.exists(os.path.join(self.dataset_cache_dir, self._get_cache_file_name(file_id)))
                 for file_id in self._get_file_id_range()
             ]
         )
 
-    def get_cache(self) -> TDataset:
+    def get_cache(self) -> Dataset:
         list_dfs: List[pd.DataFrame] = []
         for file_id in self._get_file_id_range():
-            cache_path = os.path.join(self.dataset_cache_dir, f"{file_id}.pkl")
+            cache_path = os.path.join(self.dataset_cache_dir, self._get_cache_file_name(file_id))
             list_dfs.append(pd.read_pickle(cache_path))
-        return TimeSeriesSamples(data=list_dfs, categorical_features=None)
+        temporal_covariates = TimeSeriesSamples(data=list_dfs, sample_indices=None)
+        return Dataset(temporal_covariates)
 
-    def cache(self, data: TDataset) -> None:
-        assert isinstance(data, TimeSeriesSamples)  # For mypy.
-        for file_id, ts in zip(self._get_file_id_range(), data):
-            cache_path = os.path.join(self.dataset_cache_dir, f"{file_id}.pkl")
+    def cache(self, data: Dataset) -> None:
+        temporal_covariates = data.temporal_covariates
+        for file_id, ts in zip(self._get_file_id_range(), temporal_covariates):
+            cache_path = os.path.join(self.dataset_cache_dir, self._get_cache_file_name(file_id))
             ts.df.to_pickle(cache_path)
 
-    def prepare(self) -> TDataset:
+    def prepare(self) -> Dataset:
         self.extract()
         list_dfs: List[pd.DataFrame] = []
         for file_id in self._get_file_id_range():
             df = self.process_individual_file(os.path.join(self.dataset_extracted_dir, f"data-{file_id:02}"))
             list_dfs.append(df)
-        return TimeSeriesSamples(data=list_dfs, categorical_features=None)
+        temporal_covariates = TimeSeriesSamples(data=list_dfs, sample_indices=None)
+        return Dataset(temporal_covariates)
 
 
 def uci_diabetes(
-    data_home: Optional[str] = None, refresh_cache: bool = False, redownload: bool = False
-) -> TimeSeriesSamples:
-    retriever = UCIDiabetesRetriever(data_home=data_home)
+    data_home: Optional[str] = None,
+    refresh_cache: bool = False,
+    redownload: bool = False,
+    make_regular: bool = False,
+    use_int_index: bool = False,
+) -> Dataset:
+    retriever = UCIDiabetesRetriever(data_home=data_home, make_regular=make_regular, use_int_index=use_int_index)
     tss = retriever.retrieve(refresh_cache=refresh_cache, redownload=redownload)
-    assert isinstance(tss, TimeSeriesSamples)
     return tss

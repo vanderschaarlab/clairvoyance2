@@ -1,3 +1,5 @@
-from .default_imputer import DefaultTimeSeriesSamplesImputer
+from .default_imputer import TemporalDataDefaultImputer
 
-__all__ = ["DefaultTimeSeriesSamplesImputer"]
+__all__ = [
+    "TemporalDataDefaultImputer",
+]

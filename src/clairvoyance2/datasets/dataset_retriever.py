@@ -2,7 +2,7 @@ import os
 from abc import ABC, abstractmethod
 from typing import Optional, Sequence, Tuple, TypeVar
 
-from ..data import TDataset
+from ..data import Dataset
 from .download import download_file
 
 TUrl = TypeVar("TUrl", bound=str)
@@ -45,21 +45,21 @@ class DatasetRetriever(ABC):
         ...
 
     @abstractmethod
-    def get_cache(self) -> TDataset:
+    def get_cache(self) -> Dataset:
         # Retrieve dataset from cache.
         ...
 
     @abstractmethod
-    def cache(self, data: TDataset) -> None:
+    def cache(self, data: Dataset) -> None:
         # Cache the dataset for faster opening.
         ...
 
     @abstractmethod
-    def prepare(self) -> TDataset:
+    def prepare(self) -> Dataset:
         # Prepare the dataset and return it.
         ...
 
-    def retrieve(self, refresh_cache: bool = False, redownload: bool = False) -> TDataset:
+    def retrieve(self, refresh_cache: bool = False, redownload: bool = False) -> Dataset:
         # Download dataset files (if required).
         if self.dataset_files is not None:
             if (

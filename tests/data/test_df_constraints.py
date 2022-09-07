@@ -30,14 +30,12 @@ class TestIndexConstraints:
         ],
     )
     def test_types(self, df, types, expectation):
-        with expectation:
-            constraints = dfc.Constraints(on_index=dfc.IndexConstraints(types=types))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
-            try:
-                constraints_checker.check(df)
-            except Exception as ex:
-                assert str(types) in str(ex)  # Check message text is helpful.
-                raise
+        constraints = dfc.Constraints(on_index=dfc.IndexConstraints(types=types))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
+        with expectation as excinfo:
+            constraints_checker.check(df)
+        if excinfo is not None:
+            assert str(types) in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "df, dtypes, expectation",
@@ -62,14 +60,12 @@ class TestIndexConstraints:
         ],
     )
     def test_dtypes(self, df, dtypes, expectation):
-        with expectation:
-            constraints = dfc.Constraints(on_index=dfc.IndexConstraints(dtypes=dtypes))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
-            try:
-                constraints_checker.check(df)
-            except Exception as ex:
-                assert str(dtypes) in str(ex)  # Check message text is helpful.
-                raise
+        constraints = dfc.Constraints(on_index=dfc.IndexConstraints(dtypes=dtypes))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
+        with expectation as excinfo:
+            constraints_checker.check(df)
+        if excinfo is not None:
+            assert str(dtypes) in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "df, dtype_object_constrain_types, expectation",
@@ -96,16 +92,14 @@ class TestIndexConstraints:
         ],
     )
     def test_dtype_object_constrain_types(self, df, dtype_object_constrain_types, expectation):
-        with expectation:
-            constraints = dfc.Constraints(
-                on_index=dfc.IndexConstraints(dtype_object_constrain_types=dtype_object_constrain_types)
-            )
-            constraints_checker = dfc.ConstraintsChecker(constraints)
-            try:
-                constraints_checker.check(df)
-            except Exception as ex:
-                assert str(dtype_object_constrain_types) in str(ex)  # Check message text is helpful.
-                raise
+        constraints = dfc.Constraints(
+            on_index=dfc.IndexConstraints(dtype_object_constrain_types=dtype_object_constrain_types)
+        )
+        constraints_checker = dfc.ConstraintsChecker(constraints)
+        with expectation as excinfo:
+            constraints_checker.check(df)
+        if excinfo is not None:
+            assert str(dtype_object_constrain_types) in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "df, expectation",
@@ -123,9 +117,9 @@ class TestIndexConstraints:
         ],
     )
     def test_enforce_monotonic_increasing(self, df, expectation):
+        constraints = dfc.Constraints(on_index=dfc.IndexConstraints(enforce_monotonic_increasing=True))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
         with expectation:
-            constraints = dfc.Constraints(on_index=dfc.IndexConstraints(enforce_monotonic_increasing=True))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
             constraints_checker.check(df)
 
     @pytest.mark.parametrize(
@@ -142,9 +136,9 @@ class TestIndexConstraints:
         ],
     )
     def test_enforce_unique(self, df, expectation):
+        constraints = dfc.Constraints(on_index=dfc.IndexConstraints(enforce_unique=True))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
         with expectation:
-            constraints = dfc.Constraints(on_index=dfc.IndexConstraints(enforce_unique=True))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
             constraints_checker.check(df)
 
     @pytest.mark.parametrize(
@@ -164,9 +158,9 @@ class TestIndexConstraints:
         ],
     )
     def test_enforce_not_multi_index(self, df, expectation):
+        constraints = dfc.Constraints(on_index=dfc.IndexConstraints(enforce_not_multi_index=True))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
         with expectation:
-            constraints = dfc.Constraints(on_index=dfc.IndexConstraints(enforce_not_multi_index=True))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
             constraints_checker.check(df)
 
 
@@ -189,14 +183,12 @@ class TestColumnConstraints:
         ],
     )
     def test_types(self, df, types, expectation):
-        with expectation:
-            constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(types=types))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
-            try:
-                constraints_checker.check(df)
-            except Exception as ex:
-                assert str(types) in str(ex)  # Check message text is helpful.
-                raise
+        constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(types=types))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
+        with expectation as excinfo:
+            constraints_checker.check(df)
+        if excinfo is not None:
+            assert str(types) in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "df, dtypes, expectation",
@@ -214,14 +206,12 @@ class TestColumnConstraints:
         ],
     )
     def test_dtypes(self, df, dtypes, expectation):
-        with expectation:
-            constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(dtypes=dtypes))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
-            try:
-                constraints_checker.check(df)
-            except Exception as ex:
-                assert str(dtypes) in str(ex)  # Check message text is helpful.
-                raise
+        constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(dtypes=dtypes))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
+        with expectation as excinfo:
+            constraints_checker.check(df)
+        if excinfo is not None:
+            assert str(dtypes) in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "df, dtype_object_constrain_types, expectation",
@@ -244,16 +234,14 @@ class TestColumnConstraints:
         ],
     )
     def test_dtype_object_constrain_types(self, df, dtype_object_constrain_types, expectation):
-        with expectation:
-            constraints = dfc.Constraints(
-                on_columns=dfc.IndexConstraints(dtype_object_constrain_types=dtype_object_constrain_types)
-            )
-            constraints_checker = dfc.ConstraintsChecker(constraints)
-            try:
-                constraints_checker.check(df)
-            except Exception as ex:
-                assert str(dtype_object_constrain_types) in str(ex)  # Check message text is helpful.
-                raise
+        constraints = dfc.Constraints(
+            on_columns=dfc.IndexConstraints(dtype_object_constrain_types=dtype_object_constrain_types)
+        )
+        constraints_checker = dfc.ConstraintsChecker(constraints)
+        with expectation as excinfo:
+            constraints_checker.check(df)
+        if excinfo is not None:
+            assert str(dtype_object_constrain_types) in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "df, expectation",
@@ -269,9 +257,9 @@ class TestColumnConstraints:
         ],
     )
     def test_enforce_monotonic_increasing(self, df, expectation):
+        constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(enforce_monotonic_increasing=True))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
         with expectation:
-            constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(enforce_monotonic_increasing=True))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
             constraints_checker.check(df)
 
     @pytest.mark.parametrize(
@@ -288,9 +276,9 @@ class TestColumnConstraints:
         ],
     )
     def test_enforce_unique(self, df, expectation):
+        constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(enforce_unique=True))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
         with expectation:
-            constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(enforce_unique=True))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
             constraints_checker.check(df)
 
     @pytest.mark.parametrize(
@@ -310,9 +298,9 @@ class TestColumnConstraints:
         ],
     )
     def test_enforce_not_multi_index(self, df, expectation):
+        constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(enforce_not_multi_index=True))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
         with expectation:
-            constraints = dfc.Constraints(on_columns=dfc.IndexConstraints(enforce_not_multi_index=True))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
             constraints_checker.check(df)
 
 
@@ -333,14 +321,12 @@ class TestElementConstraints:
         ],
     )
     def test_dtypes(self, df, dtypes, expectation):
-        with expectation:
-            constraints = dfc.Constraints(on_elements=dfc.ElementConstraints(dtypes=dtypes))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
-            try:
-                constraints_checker.check(df)
-            except Exception as ex:
-                assert str(dtypes) in str(ex)  # Check message text is helpful.
-                raise
+        constraints = dfc.Constraints(on_elements=dfc.ElementConstraints(dtypes=dtypes))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
+        with expectation as excinfo:
+            constraints_checker.check(df)
+        if excinfo is not None:
+            assert str(dtypes) in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "df, dtype_object_constrain_types, expectation",
@@ -370,16 +356,14 @@ class TestElementConstraints:
         ],
     )
     def test_dtype_object_constrain_types(self, df, dtype_object_constrain_types, expectation):
-        with expectation:
-            constraints = dfc.Constraints(
-                on_elements=dfc.ElementConstraints(dtype_object_constrain_types=dtype_object_constrain_types)
-            )
-            constraints_checker = dfc.ConstraintsChecker(constraints)
-            try:
-                constraints_checker.check(df)
-            except Exception as ex:
-                assert str(dtype_object_constrain_types) in str(ex)  # Check message text is helpful.
-                raise
+        constraints = dfc.Constraints(
+            on_elements=dfc.ElementConstraints(dtype_object_constrain_types=dtype_object_constrain_types)
+        )
+        constraints_checker = dfc.ConstraintsChecker(constraints)
+        with expectation as excinfo:
+            constraints_checker.check(df)
+        if excinfo is not None:
+            assert str(dtype_object_constrain_types) in str(excinfo.value)
 
     @pytest.mark.parametrize(
         "df, expectation",
@@ -405,9 +389,9 @@ class TestElementConstraints:
         ],
     )
     def test_enforce_homogenous_type_per_column(self, df, expectation):
+        constraints = dfc.Constraints(on_elements=dfc.ElementConstraints(enforce_homogenous_type_per_column=True))
+        constraints_checker = dfc.ConstraintsChecker(constraints)
         with expectation:
-            constraints = dfc.Constraints(on_elements=dfc.ElementConstraints(enforce_homogenous_type_per_column=True))
-            constraints_checker = dfc.ConstraintsChecker(constraints)
             constraints_checker.check(df)
 
 

@@ -9,7 +9,6 @@ repos:
   - id: check-added-large-files
   - id: check-ast
   - id: check-case-conflict
-  - id: check-docstring-first
   - id: check-json
   - id: check-merge-conflict
   - id: check-toml
@@ -49,3 +48,5 @@ repos:
     rev: v0.961
     hooks:
     -   id: mypy
+        files: "^src/"
+        args: [--config-file=mypy.ini]

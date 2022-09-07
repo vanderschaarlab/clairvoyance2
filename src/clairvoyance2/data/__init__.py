@@ -1,12 +1,14 @@
-from .dataformat import StaticSamples, TDataset, TimeSeries, TimeSeriesSamples
-from .feature import CategoricalFeature, Feature, FeatureType
+from .constants import DEFAULT_PADDING_INDICATOR
+from .dataformat import EventSamples, StaticSamples, TimeSeries, TimeSeriesSamples
+from .dataset import Dataset
+from .feature import Feature
 
 __all__ = [
+    "Dataset",
+    "DEFAULT_PADDING_INDICATOR",
+    "EventSamples",
+    "Feature",
+    "StaticSamples",
     "TimeSeries",
     "TimeSeriesSamples",
-    "StaticSamples",
-    "Feature",
-    "CategoricalFeature",
-    "FeatureType",
-    "TDataset",
 ]
