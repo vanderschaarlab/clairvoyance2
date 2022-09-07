@@ -3,10 +3,10 @@ import pytest
 
 from clairvoyance2.data import Dataset, StaticSamples, TimeSeriesSamples
 from clairvoyance2.preprocessing import (
-    AddStaticCovariatesTC,
-    AddTimeIndexFeatureTC,
-    ExtractTargetsTC,
-    ExtractTreatmentsTC,
+    StaticFeaturesConcatenator,
+    TemporalTargetsExtractor,
+    TemporalTreatmentsExtractor,
+    TimeIndexFeatureConcatenator,
 )
 
 # pylint: disable=redefined-outer-name
@@ -35,7 +35,7 @@ class TestIntegration:
             ],
         )
         def test_extract_subset(self, targets, expected_target_features, expected_covariate_features, three_mixed_dfs):
-            extractor = ExtractTargetsTC(params=dict(targets=targets))
+            extractor = TemporalTargetsExtractor(params=dict(targets=targets))
             temporal_covariates = TimeSeriesSamples(three_mixed_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=None, temporal_targets=None)
 
@@ -53,7 +53,7 @@ class TestIntegration:
         def test_extract_all(self, three_mixed_dfs):
             # NOTE: This case of no temporal covariates isn't properly handled elsewhere, needs to be handled properly.
 
-            extractor = ExtractTargetsTC(params=dict(targets=["a", "b", "c", "d"]))
+            extractor = TemporalTargetsExtractor(params=dict(targets=["a", "b", "c", "d"]))
             temporal_covariates = TimeSeriesSamples(three_mixed_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=None, temporal_targets=None)
 
@@ -62,7 +62,7 @@ class TestIntegration:
             assert "no covariates remain" in str(excinfo.value).lower()
 
         def test_extract_none(self, three_mixed_dfs):
-            extractor = ExtractTargetsTC(params=dict(targets=[]))
+            extractor = TemporalTargetsExtractor(params=dict(targets=[]))
             temporal_covariates = TimeSeriesSamples(three_mixed_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=None, temporal_targets=None)
 
@@ -89,7 +89,7 @@ class TestIntegration:
         def test_extract_subset(
             self, treatments, expected_treatment_features, expected_covariate_features, three_mixed_dfs
         ):
-            extractor = ExtractTreatmentsTC(params=dict(treatments=treatments))
+            extractor = TemporalTreatmentsExtractor(params=dict(treatments=treatments))
             temporal_covariates = TimeSeriesSamples(three_mixed_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=None, temporal_treatments=None)
 
@@ -171,7 +171,7 @@ class TestIntegration:
             df_0 = pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}, index=[1, 2, 3])
             df_1 = pd.DataFrame({"a": [7, 8, 9, 10], "b": [7.0, 8.0, 9.0, 10.0]}, index=[10, 30, 35, 100])
             data = Dataset(temporal_covariates=TimeSeriesSamples([df_0, df_1]))
-            transformer = AddTimeIndexFeatureTC(params=params)
+            transformer = TimeIndexFeatureConcatenator(params=params)
 
             # Act:
             data = transformer.fit_transform(data)
@@ -206,7 +206,7 @@ class TestIntegration:
 
         def test_raises_exception_if_neither_feature_specified(self):
             with pytest.raises(ValueError) as excinfo:
-                AddTimeIndexFeatureTC(params=dict(add_time_index=False, add_time_delta=False))
+                TimeIndexFeatureConcatenator(params=dict(add_time_index=False, add_time_delta=False))
             assert "at least one of" in str(excinfo.value)
 
     class TestAddStaticCovariatesTC:
@@ -411,7 +411,7 @@ class TestIntegration:
                 temporal_covariates=TimeSeriesSamples(t_cov_dfs),
                 static_covariates=StaticSamples(s_cov_df),
             )
-            transformer = AddStaticCovariatesTC(params=params)
+            transformer = StaticFeaturesConcatenator(params=params)
 
             # Act:
             data_new = transformer.fit_transform(data)
@@ -468,7 +468,7 @@ class TestIntegration:
                 temporal_covariates=TimeSeriesSamples(t_cov_dfs),
                 static_covariates=StaticSamples(s_cov_df),
             )
-            transformer = AddStaticCovariatesTC(params=params)
+            transformer = StaticFeaturesConcatenator(params=params)
 
             # Act:
             data_new = transformer.fit_transform(data)
@@ -510,7 +510,7 @@ class TestIntegration:
                 temporal_covariates=TimeSeriesSamples(t_cov_dfs),
                 static_covariates=StaticSamples(s_cov_df),
             )
-            transformer = AddStaticCovariatesTC(params=params)
+            transformer = StaticFeaturesConcatenator(params=params)
 
             # Act, Assert:
             with pytest.raises(ValueError) as excinfo:

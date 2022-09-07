@@ -3,15 +3,13 @@ import os
 import numpy as np
 import pandas as pd
 import pytest
+import torch
 
 from clairvoyance2.data import Dataset, TimeSeries, TimeSeriesSamples
 from clairvoyance2.datasets.dummy import dummy_dataset
-from clairvoyance2.prediction import (
-    NStepAheadHorizon,
-    RecurrentNetNStepAheadClassifier,
-    RecurrentNetNStepAheadRegressor,
-)
-from clairvoyance2.preprocessing import ExtractTargetsTC
+from clairvoyance2.interface.horizon import NStepAheadHorizon
+from clairvoyance2.prediction import RNNClassifier, RNNRegressor
+from clairvoyance2.preprocessing import TemporalTargetsExtractor
 
 # pylint: disable=redefined-outer-name
 # ^ Otherwise pylint trips up on pytest fixtures.
@@ -73,13 +71,11 @@ class TestIntegration:
         )
         def test_fit_predict_vary_targets_and_horizon(self, dummy_data, targets, horizon_n_step, param_rnn_type):
             # Arrange.
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(
-                params=dict(hidden_size=10, epochs=3, batch_size=2, rnn_type=param_rnn_type)
-            )
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor = RNNRegressor(params=dict(hidden_size=10, epochs=3, batch_size=2, rnn_type=param_rnn_type))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
 
             # Assert.
@@ -90,13 +86,11 @@ class TestIntegration:
             # Arrange.
             targets = [4]
             horizon_n_step = 1
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(
-                params=dict(hidden_size=10, epochs=3, batch_size=2, use_past_targets=False)
-            )
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor = RNNRegressor(params=dict(hidden_size=10, epochs=3, batch_size=2, use_past_targets=False))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
 
             # Assert.
@@ -116,10 +110,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(
+            predictor = RNNRegressor(
                 params=dict(
                     hidden_size=param_hidden_size,
                     epochs=3,
@@ -128,7 +122,7 @@ class TestIntegration:
                     num_layers=param_num_layers,
                 )
             )
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
 
             # Assert.
@@ -146,10 +140,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(
+            predictor = RNNRegressor(
                 params=dict(
                     hidden_size=10,
                     epochs=3,
@@ -159,7 +153,7 @@ class TestIntegration:
                     bidirectional=True,
                 )
             )
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
 
             # Assert.
@@ -171,13 +165,11 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(
-                params=dict(epochs=3, batch_size=2, rnn_type="LSTM", proj_size=param_proj_size)
-            )
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor = RNNRegressor(params=dict(epochs=3, batch_size=2, rnn_type="LSTM", proj_size=param_proj_size))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
 
             # Assert.
@@ -189,11 +181,11 @@ class TestIntegration:
             batch_size = 5000  # > 100 samples.
             targets = [2, 3]
             horizon_n_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(params=dict(epochs=3, batch_size=batch_size, rnn_type="LSTM"))
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor = RNNRegressor(params=dict(epochs=3, batch_size=batch_size, rnn_type="LSTM"))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
 
             # Assert.
@@ -206,10 +198,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(
+            predictor = RNNRegressor(
                 params=dict(
                     epochs=3,
                     batch_size=2,
@@ -217,7 +209,7 @@ class TestIntegration:
                     ff_out_activation=param_ff_out_activation,
                 )
             )
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
 
             # Assert.
@@ -239,11 +231,35 @@ class TestIntegration:
             )
 
             # Act.
-            predictor = RecurrentNetNStepAheadClassifier(
-                params=dict(hidden_size=10, epochs=3, batch_size=2, rnn_type="LSTM")
-            )
-            predictor: RecurrentNetNStepAheadClassifier = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor = RNNClassifier(params=dict(hidden_size=10, epochs=3, batch_size=2, rnn_type="LSTM"))
+            predictor: RNNClassifier = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
+
+            # Assert.
+            assert_all(data, data_pred, targets, horizon_n_step, predictor.params.padding_indicator)
+
+        def test_device_cuda(self):
+            if not torch.cuda.is_available():
+                pytest.skip("Skipping CUDA device test, as no CUDA devices available")
+
+            # Arrange.
+            horizon_n_step = 3
+            targets = [0, 1]
+            data = dummy_dataset(
+                n_samples=3,
+                temporal_covariates_n_features=5,
+                temporal_covariates_max_len=6,
+                temporal_covariates_missing_prob=0.0,
+                temporal_targets_n_categories=1,
+                temporal_targets_n_features=2,
+                static_covariates_n_features=0,
+                random_seed=12345,
+            )
+
+            # Act.
+            predictor = RNNClassifier(params=dict(hidden_size=10, epochs=3, batch_size=2, rnn_type="LSTM"))
+            predictor: RNNClassifier = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step), device="cuda")
+            data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step), device="cuda")
 
             # Assert.
             assert_all(data, data_pred, targets, horizon_n_step, predictor.params.padding_indicator)
@@ -252,10 +268,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(
+            predictor = RNNRegressor(
                 params=dict(
                     epochs=3,
                     batch_size=2,
@@ -263,10 +279,10 @@ class TestIntegration:
                     ff_out_activation="Sigmoid",
                 )
             )
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             path = os.path.join(tmpdir, "predictor.p")
             predictor.save(path)
-            loaded_model = RecurrentNetNStepAheadRegressor.load(path)
+            loaded_model = RNNRegressor.load(path)
 
             # Assert:
             assert os.path.exists(os.path.join(tmpdir, "predictor.p.params"))
@@ -301,13 +317,11 @@ class TestIntegration:
             ]
             data = Dataset(temporal_covariates=TimeSeriesSamples(dfs))
 
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = RecurrentNetNStepAheadRegressor(
-                params=dict(hidden_size=10, epochs=3, batch_size=1, use_past_targets=False)
-            )
-            predictor: RecurrentNetNStepAheadRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
+            predictor = RNNRegressor(params=dict(hidden_size=10, epochs=3, batch_size=1, use_past_targets=False))
+            predictor: RNNRegressor = predictor.fit(data, horizon=NStepAheadHorizon(horizon_n_step))
             data_pred = predictor.predict(data, horizon=NStepAheadHorizon(horizon_n_step))
 
             # Assert.

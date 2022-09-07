@@ -62,5 +62,5 @@ class RMSEMetricTS(MSEMetricTS):
         return super().__call__(data_true, data_pred) ** (1 / 2)
 
 
-mse_ts = MSEMetricTS()
-rmse_ts = RMSEMetricTS()
+mse_t = MSEMetricTS()
+rmse_t = RMSEMetricTS()

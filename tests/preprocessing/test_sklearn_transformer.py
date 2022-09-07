@@ -7,12 +7,12 @@ from sklearn.preprocessing import StandardScaler
 
 from clairvoyance2.data import Dataset, StaticSamples, TimeSeriesSamples
 from clairvoyance2.preprocessing import (
-    MinMaxScalerStatic,
-    MinMaxScalerTemporal,
-    SklearnTransformerStatic,
-    SklearnTransformerTemporal,
-    StandardScalerStatic,
-    StandardScalerTemporal,
+    StaticDataMinMaxScaler,
+    StaticDataSklearnTransformer,
+    StaticDataStandardScaler,
+    TemporalDataMinMaxScaler,
+    TemporalDataSklearnTransformer,
+    TemporalDataStandardScaler,
 )
 
 # pylint: disable=redefined-outer-name
@@ -31,7 +31,7 @@ class TestIntegration:
     class TestSklearnTransformerStatic:
         def test_init_and_all_methods_success(self):
             # Arrange.
-            my_transformer = SklearnTransformerStatic(
+            my_transformer = StaticDataSklearnTransformer(
                 sklearn_transformer=StandardScaler, params=dict(copy=True, with_mean=True, with_std=False)
             )
             static_covariates = StaticSamples(np.asarray([[1.0, 12.0, 18.0], [0.0, -5.0, 22.0], [11.0, 2.0, 97.0]]))
@@ -39,7 +39,7 @@ class TestIntegration:
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=static_covariates)
 
             # Act.
-            my_transformer: SklearnTransformerStatic = my_transformer.fit(data)
+            my_transformer: StaticDataSklearnTransformer = my_transformer.fit(data)
             data_transformed = my_transformer.transform(data)
             data_transformed = my_transformer.fit_transform(data)
             data_inverse_transformed = my_transformer.inverse_transform(  # noqa  # pylint: disable=unused-variable
@@ -50,7 +50,7 @@ class TestIntegration:
 
     class TestStandardScalerStatic:
         def test_transform_inverse_transform(self):
-            scaler = StandardScalerStatic(params=dict())
+            scaler = StaticDataStandardScaler(params=dict())
             static_covariates = StaticSamples(np.asarray([[1.0, 2.0, 3.0], [0.0, -5.0, 5.0], [-10.0, 20.0, -30.0]]))
             temporal_covariates = Mock(spec=TimeSeriesSamples, n_samples=3, sample_indices=[0, 1, 2])
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=static_covariates)
@@ -79,7 +79,7 @@ class TestIntegration:
 
     class TestMinMaxScalerStatic:
         def test_transform_inverse_transform(self):
-            scaler = MinMaxScalerStatic(params=dict())
+            scaler = StaticDataMinMaxScaler(params=dict())
             static_covariates = StaticSamples(np.asarray([[1.0, 2.0, 3.0], [0.0, -5.0, 5.0], [-10.0, 20.0, -30.0]]))
             temporal_covariates = Mock(spec=TimeSeriesSamples, n_samples=3, sample_indices=[0, 1, 2])
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=static_covariates)
@@ -103,7 +103,7 @@ class TestIntegration:
     class TestSklearnTransformerTemporal:
         def test_init_and_all_methods_success(self, three_numeric_dfs):
             # Arrange.
-            my_transformer = SklearnTransformerTemporal(
+            my_transformer = TemporalDataSklearnTransformer(
                 sklearn_transformer=StandardScaler, params=dict(copy=True, with_mean=True, with_std=False)
             )
             static_covariates = Mock(spec=StaticSamples, n_samples=3, sample_indices=[0, 1, 2])
@@ -111,7 +111,7 @@ class TestIntegration:
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=static_covariates)
 
             # Act.
-            my_transformer: SklearnTransformerTemporal = my_transformer.fit(data)
+            my_transformer: TemporalDataSklearnTransformer = my_transformer.fit(data)
             data_transformed = my_transformer.transform(data)
             data_transformed = my_transformer.fit_transform(data)
             data_inverse_transformed = my_transformer.inverse_transform(  # noqa  # pylint: disable=unused-variable
@@ -122,7 +122,7 @@ class TestIntegration:
 
     class TestStandardScalerTemporal:
         def test_transform_inverse_transform(self, three_numeric_dfs):
-            scaler = StandardScalerTemporal(params=dict())
+            scaler = TemporalDataStandardScaler(params=dict())
             static_covariates = Mock(spec=StaticSamples, n_samples=3, sample_indices=[0, 1, 2])
             temporal_covariates = TimeSeriesSamples(three_numeric_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=static_covariates)
@@ -179,7 +179,7 @@ class TestIntegration:
 
     class TestMinMaxScalerTemporal:
         def test_transform_inverse_transform(self, three_numeric_dfs):
-            scaler = MinMaxScalerTemporal(params=dict())
+            scaler = TemporalDataMinMaxScaler(params=dict())
             static_covariates = Mock(spec=StaticSamples, n_samples=3, sample_indices=[0, 1, 2])
             temporal_covariates = TimeSeriesSamples(three_numeric_dfs)
             data = Dataset(temporal_covariates=temporal_covariates, static_covariates=static_covariates)
@@ -235,7 +235,7 @@ class TestIntegration:
             )
 
         def test_transform_inverse_transform_apply_to_temporal_targets(self, three_numeric_dfs):
-            scaler = MinMaxScalerTemporal(params=dict(apply_to="temporal_targets"))  # <-- Note this apply_to.
+            scaler = TemporalDataMinMaxScaler(params=dict(apply_to="temporal_targets"))  # <-- Note this apply_to.
             static_covariates = Mock(spec=StaticSamples, n_samples=3, sample_indices=[0, 1, 2])
             temporal_covariates = Mock(spec=TimeSeriesSamples, n_samples=3, sample_indices=[0, 1, 2])
             temporal_targets = TimeSeriesSamples(three_numeric_dfs)

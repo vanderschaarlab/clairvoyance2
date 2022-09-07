@@ -10,13 +10,13 @@ from ..interface.requirements import DatasetRequirements, DataValueOpts, Require
 
 # TODO: Unit tests.
 # NOTE: This imputer does nothing to temporal *targets*, only affects temporal *covariates*.
-class DefaultImputerTC(TransformerModel):
+class TemporalDataDefaultImputer(TransformerModel):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(temporal_covariates_value_type=DataValueOpts.NUMERIC),
         prediction_requirements=None,  # Transformers do not have prediction requirements.
     )
 
-    def _fit(self, data: Dataset) -> "DefaultImputerTC":
+    def _fit(self, data: Dataset, **kwargs) -> "TemporalDataDefaultImputer":
         temporal_covariates = data.temporal_covariates
 
         assert isinstance(temporal_covariates, TimeSeriesSamples)  # For mypy
@@ -36,7 +36,7 @@ class DefaultImputerTC(TransformerModel):
         timeseries.df = timeseries.df.ffill(axis=0).bfill(axis=0).fillna(value=self.global_fill_values)
         return timeseries
 
-    def _transform(self, data: Dataset) -> Dataset:
+    def _transform(self, data: Dataset, **kwargs) -> Dataset:
         data = data.copy()
         temporal_covariates = data.temporal_covariates
 

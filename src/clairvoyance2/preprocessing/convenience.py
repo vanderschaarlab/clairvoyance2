@@ -20,7 +20,7 @@ class ExtractTC(TransformerModel):
         dataset_requirements=DatasetRequirements(),
     )
 
-    def _fit(self, data: Dataset) -> "ExtractTC":
+    def _fit(self, data: Dataset, **kwargs) -> "ExtractTC":
         # Nothing happens in `fit` here.
         return self
 
@@ -55,7 +55,7 @@ class _ExtractTargetsTCParams(NamedTuple):
     targets: TFeatureSelector = tuple()
 
 
-class ExtractTargetsTC(ExtractTC):
+class TemporalTargetsExtractor(ExtractTC):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(),
     )
@@ -64,7 +64,7 @@ class ExtractTargetsTC(ExtractTC):
     def _get_selector_param(self) -> TFeatureSelector:
         return self.params.targets
 
-    def _transform(self, data: Dataset) -> Dataset:
+    def _transform(self, data: Dataset, **kwargs) -> Dataset:
         data = data.copy()
 
         temporal_covariates, temporal_targets = self._extract(data.temporal_covariates)
@@ -78,7 +78,7 @@ class _ExtractTreatmentsTCParams(NamedTuple):
     treatments: TFeatureSelector = tuple()
 
 
-class ExtractTreatmentsTC(ExtractTC):
+class TemporalTreatmentsExtractor(ExtractTC):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(),
     )
@@ -87,7 +87,7 @@ class ExtractTreatmentsTC(ExtractTC):
     def _get_selector_param(self) -> TFeatureSelector:
         return self.params.treatments
 
-    def _transform(self, data: Dataset) -> Dataset:
+    def _transform(self, data: Dataset, **kwargs) -> Dataset:
         data = data.copy()
 
         temporal_covariates, temporal_treatments = self._extract(data.temporal_covariates)
@@ -104,7 +104,7 @@ class _AddTimeIndexFeatureTCParams(NamedTuple):
     time_delta_pad_value: float = 0.0
 
 
-class AddTimeIndexFeatureTC(TransformerModel):
+class TimeIndexFeatureConcatenator(TransformerModel):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
             requires_all_temporal_data_index_numeric=True,
@@ -117,11 +117,11 @@ class AddTimeIndexFeatureTC(TransformerModel):
         if self.params.add_time_index is False and self.params.add_time_delta is False:
             raise ValueError("Must set at least one of `add_time_index` or `add_time_delta` to True")
 
-    def _fit(self, data: Dataset) -> "AddTimeIndexFeatureTC":
+    def _fit(self, data: Dataset, **kwargs) -> "TimeIndexFeatureConcatenator":
         # Nothing happens in `fit` here.
         return self
 
-    def _transform(self, data: Dataset) -> Dataset:
+    def _transform(self, data: Dataset, **kwargs) -> Dataset:
         data = data.copy()
 
         cast_time_series_samples_feature_names_to_str(data.temporal_covariates)
@@ -154,7 +154,7 @@ class _AddStaticCovariatesTCParams(NamedTuple):
     drop_static_covariates: bool = False
 
 
-class AddStaticCovariatesTC(TransformerModel):
+class StaticFeaturesConcatenator(TransformerModel):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
             requires_static_covariates_present=True,
@@ -162,11 +162,11 @@ class AddStaticCovariatesTC(TransformerModel):
     )
     DEFAULT_PARAMS: _AddStaticCovariatesTCParams = _AddStaticCovariatesTCParams()
 
-    def _fit(self, data: Dataset) -> "AddStaticCovariatesTC":
+    def _fit(self, data: Dataset, **kwargs) -> "StaticFeaturesConcatenator":
         # Nothing happens in `fit` here.
         return self
 
-    def _transform(self, data: Dataset) -> Dataset:
+    def _transform(self, data: Dataset, **kwargs) -> Dataset:
         data = data.copy()
         assert data.static_covariates is not None
 

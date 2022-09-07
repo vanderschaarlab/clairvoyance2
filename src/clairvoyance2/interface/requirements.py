@@ -2,10 +2,9 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, NoReturn, Optional, Sequence, Union
 
-from ..data import Dataset, StaticSamples, TimeSeries, TimeSeriesSamples
+from ..data import Dataset, EventSamples, StaticSamples, TimeSeries, TimeSeriesSamples
 from ..data.constants import T_NumericDtype_AsTuple, T_SamplesIndexDtype
 from ..utils.common import python_type_from_np_pd_dtype
-from ..utils.dev import raise_not_implemented
 from .horizon import Horizon, HorizonOpts, NStepAheadHorizon
 
 if TYPE_CHECKING:
@@ -15,6 +14,7 @@ if TYPE_CHECKING:
 class DataStructureOpts(Enum):
     TIME_SERIES = auto()
     STATIC = auto()
+    EVENT = auto()
 
 
 class DataValueOpts(Enum):
@@ -26,16 +26,22 @@ class DataValueOpts(Enum):
 
 @dataclass(frozen=True)
 class DatasetRequirements:
+    # Miscellaneous:
     requires_static_covariates_present: bool = False
+    requires_no_missing_data: bool = False
+    # Value types:
     static_covariates_value_type: DataValueOpts = DataValueOpts.ANY
     temporal_covariates_value_type: DataValueOpts = DataValueOpts.ANY
     temporal_targets_value_type: DataValueOpts = DataValueOpts.ANY
     temporal_treatments_value_type: DataValueOpts = DataValueOpts.ANY
+    event_covariates_value_type: DataValueOpts = DataValueOpts.ANY
+    event_targets_value_type: DataValueOpts = DataValueOpts.ANY
+    event_treatments_value_type: DataValueOpts = DataValueOpts.ANY
+    # Special temporal requirements:
     requires_all_temporal_data_samples_aligned: bool = False
     requires_all_temporal_data_regular: bool = False
     requires_all_temporal_data_index_numeric: bool = False
     requires_all_temporal_containers_shares_index: bool = True
-    requires_no_missing_data: bool = False
 
 
 @dataclass(frozen=True)
@@ -84,7 +90,7 @@ class RequirementsChecker:
     @staticmethod
     def _check_data_value_type(
         requirement: DataValueOpts,
-        container: Union[TimeSeriesSamples, StaticSamples],
+        container: Union[TimeSeriesSamples, StaticSamples, EventSamples],
         preface: str,
     ):
         if requirement in (
@@ -173,8 +179,13 @@ class RequirementsChecker:
                     # TODO: Implement any data requirements.
                     pass
 
+        elif requirements.prediction_requirements.target_data_structure == DataStructureOpts.EVENT:
+            # TODO: Any requirements checks.
+            pass
+
         elif requirements.prediction_requirements.target_data_structure == DataStructureOpts.STATIC:
-            raise_not_implemented("Requirements checks for prediction requirements: static targets")
+            # TODO: Any requirements checks.
+            pass
 
     @staticmethod
     def _check_data_requirements_predict_counterfactuals(  # pylint: disable=unused-argument
@@ -220,6 +231,14 @@ class RequirementsChecker:
                     "predict-counterfactual-time,",
                 )
 
+        elif requirements.treatment_effects_requirements.treatment_data_structure == DataStructureOpts.EVENT:
+            # TODO: Any requirements checks.
+            pass
+
+        elif requirements.treatment_effects_requirements.treatment_data_structure == DataStructureOpts.STATIC:
+            # TODO: Any requirements checks.
+            pass
+
         # TODO: The below is temporary. Interface is not settled and may change.
         if treatment_scenarios is not None:
             if requirements.treatment_effects_requirements.treatment_data_structure == DataStructureOpts.TIME_SERIES:
@@ -232,19 +251,29 @@ class RequirementsChecker:
 
     @staticmethod
     def check_data_requirements_general(called_at_fit_time: bool, requirements: Requirements, data: Dataset, **kwargs):
-        # General data requirements:
+        # General data requirements.
+
+        # Miscellaneous.
         if requirements.dataset_requirements.requires_static_covariates_present:
             if data.static_covariates is None:
                 raise_requirements_mismatch_error(
                     "Dataset requirement: requires static samples", "Dataset did not have static samples"
                 )
-        if data.static_covariates is not None:
-            if requirements.dataset_requirements.static_covariates_value_type:
-                RequirementsChecker._check_data_value_type(
-                    requirement=requirements.dataset_requirements.static_covariates_value_type,
-                    container=data.static_covariates,
-                    preface="Dataset requirement: static covariates data type",
-                )
+        if requirements.dataset_requirements.requires_no_missing_data:
+            for container_name, container in data.all_data_containers.items():
+                if container.has_missing:
+                    raise_requirements_mismatch_error(
+                        "Dataset requirement: requires no missing data",
+                        f"Dataset {get_container_friendly_name(container_name)} had missing data",
+                    )
+
+        # Check data value types.
+        if data.static_covariates is not None and requirements.dataset_requirements.static_covariates_value_type:
+            RequirementsChecker._check_data_value_type(
+                requirement=requirements.dataset_requirements.static_covariates_value_type,
+                container=data.static_covariates,
+                preface="Dataset requirement: static covariates data type",
+            )
         if requirements.dataset_requirements.temporal_covariates_value_type:
             RequirementsChecker._check_data_value_type(
                 requirement=requirements.dataset_requirements.temporal_covariates_value_type,
@@ -263,13 +292,26 @@ class RequirementsChecker:
                 container=data.temporal_treatments,
                 preface="Dataset requirement: temporal treatment data type",
             )
-        if requirements.dataset_requirements.requires_no_missing_data:
-            for container_name, container in data.all_data_containers.items():
-                if container.has_missing:
-                    raise_requirements_mismatch_error(
-                        "Dataset requirement: requires no missing data",
-                        f"Dataset {get_container_friendly_name(container_name)} had missing data",
-                    )
+        if data.event_covariates is not None and requirements.dataset_requirements.event_covariates_value_type:
+            RequirementsChecker._check_data_value_type(
+                requirement=requirements.dataset_requirements.event_covariates_value_type,
+                container=data.event_covariates,
+                preface="Dataset requirement: event covariates data type",
+            )
+        if data.event_targets is not None and requirements.dataset_requirements.event_targets_value_type:
+            RequirementsChecker._check_data_value_type(
+                requirement=requirements.dataset_requirements.event_targets_value_type,
+                container=data.event_targets,
+                preface="Dataset requirement: event target data type",
+            )
+        if data.event_treatments is not None and requirements.dataset_requirements.event_treatments_value_type:
+            RequirementsChecker._check_data_value_type(
+                requirement=requirements.dataset_requirements.event_treatments_value_type,
+                container=data.event_treatments,
+                preface="Dataset requirement: event treatment data type",
+            )
+
+        # Special temporal requirements.
         if requirements.dataset_requirements.requires_all_temporal_data_regular:
             for container_name, container in data.temporal_data_containers.items():
                 is_regular, _ = container.is_regular()
@@ -281,7 +323,7 @@ class RequirementsChecker:
                     )
         if requirements.dataset_requirements.requires_all_temporal_data_samples_aligned:
             for container_name, container in data.temporal_data_containers.items():
-                if not container.samples_aligned():
+                if not container.all_samples_aligned:
                     raise_requirements_mismatch_error(
                         "Dataset requirement: requires aligned timeseries",
                         f"Dataset {get_container_friendly_name(container_name)} were not all aligned by their index",
@@ -309,6 +351,7 @@ class RequirementsChecker:
                     f"The containers {a_name} and {b_name} did not have the same time index for all samples",
                 )
 
+        # Try to get additional kwargs if provided.
         horizon = kwargs.pop("horizon") if "horizon" in kwargs else None
         sample_index = kwargs.pop("sample_index") if "sample_index" in kwargs else None
         treatment_scenarios = kwargs.pop("treatment_scenarios") if "treatment_scenarios" in kwargs else None
@@ -338,7 +381,9 @@ class RequirementsChecker:
         pass
 
     @staticmethod
-    def check_data_requirements_predict(requirements: Requirements, data: Dataset, horizon: Horizon, **kwargs):
+    def check_data_requirements_predict(
+        requirements: Requirements, data: Dataset, horizon: Optional[Horizon], **kwargs
+    ):
         # Currently no checks.
         if horizon is None:
             raise RuntimeError("Prediction model must receive a horizon object at predict-time")
@@ -353,7 +398,7 @@ class RequirementsChecker:
         data: Dataset,
         sample_index: T_SamplesIndexDtype,
         treatment_scenarios: "TTreatmentScenarios",
-        horizon: Horizon,
+        horizon: Optional[Horizon],
         **kwargs,
     ):
         # Currently no checks.

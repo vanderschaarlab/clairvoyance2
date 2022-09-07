@@ -5,7 +5,9 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset as TorchDataset
 
-from ..data import DEFAULT_PADDING_INDICATOR, Dataset, StaticSamples, TimeSeriesSamples
+from ..data import Dataset, StaticSamples, TimeSeriesSamples
+from ..data.constants import DEFAULT_PADDING_INDICATOR
+from ..utils.dev import raise_not_implemented
 
 
 def _to_tensor_handle_none(
@@ -52,8 +54,10 @@ class ClairvoyanceTorchDataset(TorchDataset):
                 container = data.all_data_containers[container_name]
                 if isinstance(container, StaticSamples):
                     array = container.to_numpy()
-                else:
+                elif isinstance(container, TimeSeriesSamples):
                     array = container.to_numpy(padding_indicator=self.padding_indicator, max_len=self.max_len)
+                else:
+                    raise_not_implemented(f"ClairvoyanceTorchDataset with {container.__class__.__name__} containers")
             else:
                 if self.container_defs[container_name] == StaticSamples:
                     nans_shape = (data.n_samples, 1)

@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from . import df_constraints as dfc
+from .constants import SAMPLE_INDEX_NAME
 
 # TODO: May get rid of this Generic[TIndexItem, TColumnItem], not hugely useful.
 TIndexItem = TypeVar("TIndexItem")
@@ -77,28 +78,13 @@ class CustomGetItemMixin(Generic[TIndexItem, TColumnItem]):
 class BaseContainer(CustomGetItemMixin[TIndexItem, TColumnItem], Sequence):
     _df_constraints: dfc.Constraints
 
-    def __init__(self, data) -> None:
+    def __init__(self, data, index_name: Any = SAMPLE_INDEX_NAME) -> None:
         if isinstance(data, np.ndarray):
             data = _process_init_from_ndarray(data)
         dfc.ConstraintsChecker(self._df_constraints).check(data)
 
         self._data: pd.DataFrame = data
-
-        # Convenience.
-        assert (
-            self._df_constraints.on_index is not None
-            and self._df_constraints.on_index.dtypes is not None
-            and len(self._df_constraints.on_index.dtypes) > 0
-        )
-        self._index_dtypes: Tuple[type, ...] = tuple(self._df_constraints.on_index.dtypes)
-        if (
-            self._df_constraints.on_columns is not None
-            and self._df_constraints.on_columns.dtypes is not None
-            and len(self._df_constraints.on_columns.dtypes) > 0
-        ):
-            self._column_dtypes: Optional[Tuple[type, ...]] = tuple(self._df_constraints.on_columns.dtypes)
-        else:
-            self._column_dtypes = None
+        self._data.index.rename(index_name, inplace=True)
 
         BaseContainer.validate(self)  # In case derived classes override.
 
@@ -111,14 +97,35 @@ class BaseContainer(CustomGetItemMixin[TIndexItem, TColumnItem], Sequence):
         self._data = value
         self.validate()
 
+    @property
+    def df_repr(self) -> Optional[str]:
+        return None
+
+    @property
+    def df_repr_html(self) -> Optional[str]:
+        return None
+
     def __repr__(self) -> str:
-        return self._data.__repr__()
+        if self.df_repr is None:
+            df_repr = self._data.__repr__()
+        else:
+            df_repr = self.df_repr
+        repr_ = f"{self.__class__.__name__}() with data:\n{df_repr}"
+        return repr_
 
     def _repr_html_(self) -> Optional[str]:
-        return self._data._repr_html_()  # pylint: disable=protected-access
+        if self.df_repr_html is None:
+            df_repr_html = self._data._repr_html_()  # pylint: disable=protected-access
+        else:
+            df_repr_html = self.df_repr_html
+        repr_ = (
+            f'<p><span style="font-family: monospace;">{self.__class__.__name__}()</span> with data:</p>'
+            f"{df_repr_html}"
+        )
+        return repr_
 
     def __str__(self) -> str:
-        return self._data.__str__()
+        return self.__repr__()
 
     def plot(self) -> Any:
         return self._data.plot()

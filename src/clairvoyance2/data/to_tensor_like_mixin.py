@@ -3,7 +3,7 @@ from typing import Optional, overload
 import numpy as np
 import torch
 
-from . import DEFAULT_PADDING_INDICATOR
+from .constants import DEFAULT_PADDING_INDICATOR
 
 
 class ToTensorLikeMixin:

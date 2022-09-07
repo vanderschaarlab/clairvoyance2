@@ -1,3 +1,5 @@
-from .default_imputer import DefaultImputerTC
+from .default_imputer import TemporalDataDefaultImputer
 
-__all__ = ["DefaultImputerTC"]
+__all__ = [
+    "TemporalDataDefaultImputer",
+]

@@ -75,7 +75,7 @@ class SklearnTransformerForClairvoyance(TransformerModel):
 
 
 # TODO: Unit test, additional testing.
-class SklearnTransformerStatic(SklearnTransformerForClairvoyance):
+class StaticDataSklearnTransformer(SklearnTransformerForClairvoyance):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
             requires_static_covariates_present=True,
@@ -85,7 +85,7 @@ class SklearnTransformerStatic(SklearnTransformerForClairvoyance):
     )
     non_sklearn_params = {"apply_to": "static_covariates"}
 
-    def _fit(self, data: Dataset) -> "SklearnTransformerStatic":
+    def _fit(self, data: Dataset, **kwargs) -> "StaticDataSklearnTransformer":
         assert self.get_container(data) is not None
         self.sklearn_model.fit(self.get_container(data).df)
         return self
@@ -96,14 +96,14 @@ class SklearnTransformerStatic(SklearnTransformerForClairvoyance):
         self.get_container(data).df[:] = method(self.get_container(data).df)
         return data
 
-    def _transform(self, data: Dataset) -> Dataset:
+    def _transform(self, data: Dataset, **kwargs) -> Dataset:
         return self._transformation_dispatch(data, method=self.sklearn_model.transform)
 
-    def _inverse_transform(self, data: Dataset) -> Dataset:
+    def _inverse_transform(self, data: Dataset, **kwargs) -> Dataset:
         return self._transformation_dispatch(data, method=self.sklearn_model.inverse_transform)
 
 
-class SklearnTransformerTemporal(SklearnTransformerForClairvoyance):
+class TemporalDataSklearnTransformer(SklearnTransformerForClairvoyance):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
             requires_static_covariates_present=False,
@@ -116,7 +116,7 @@ class SklearnTransformerTemporal(SklearnTransformerForClairvoyance):
     )
     non_sklearn_params = {"apply_to": "temporal_covariates"}
 
-    def _fit(self, data: Dataset) -> "SklearnTransformerTemporal":
+    def _fit(self, data: Dataset, **kwargs) -> "TemporalDataSklearnTransformer":
         assert self.get_container(data) is not None
         self.sklearn_model.fit(self.get_container(data).to_multi_index_dataframe().values)
         return self
@@ -134,14 +134,14 @@ class SklearnTransformerTemporal(SklearnTransformerForClairvoyance):
         self.set_container(data, value=new_value)
         return data
 
-    def _transform(self, data: Dataset) -> Dataset:
+    def _transform(self, data: Dataset, **kwargs) -> Dataset:
         return self._transformation_dispatch(data, method=self.sklearn_model.transform)
 
-    def _inverse_transform(self, data: Dataset) -> Dataset:
+    def _inverse_transform(self, data: Dataset, **kwargs) -> Dataset:
         return self._transformation_dispatch(data, method=self.sklearn_model.inverse_transform)
 
 
-class StandardScalerStatic(SklearnTransformerStatic):
+class StaticDataStandardScaler(StaticDataSklearnTransformer):
     DEFAULT_PARAMS = dict(apply_to="static_covariates", copy=True, with_mean=True, with_std=True)
     check_unknown_params: bool = True
 
@@ -149,7 +149,7 @@ class StandardScalerStatic(SklearnTransformerStatic):
         super().__init__(StandardScaler, params)
 
 
-class MinMaxScalerStatic(SklearnTransformerStatic):
+class StaticDataMinMaxScaler(StaticDataSklearnTransformer):
     DEFAULT_PARAMS = dict(apply_to="static_covariates", feature_range=(0, 1), copy=True, clip=False)
     check_unknown_params: bool = True
 
@@ -157,7 +157,7 @@ class MinMaxScalerStatic(SklearnTransformerStatic):
         super().__init__(MinMaxScaler, params)
 
 
-class StandardScalerTemporal(SklearnTransformerTemporal):
+class TemporalDataStandardScaler(TemporalDataSklearnTransformer):
     DEFAULT_PARAMS = dict(apply_to="temporal_covariates", copy=True, with_mean=True, with_std=True)
     check_unknown_params: bool = True
 
@@ -165,7 +165,7 @@ class StandardScalerTemporal(SklearnTransformerTemporal):
         super().__init__(StandardScaler, params)
 
 
-class MinMaxScalerTemporal(SklearnTransformerTemporal):
+class TemporalDataMinMaxScaler(TemporalDataSklearnTransformer):
     DEFAULT_PARAMS = dict(apply_to="temporal_covariates", feature_range=(0, 1), copy=True, clip=False)
     check_unknown_params: bool = True
 
@@ -175,7 +175,7 @@ class MinMaxScalerTemporal(SklearnTransformerTemporal):
 
 # TODO: Invert non-string column names back to the original dtype.
 # TODO: Needs testing. (see 64_our-onehot.ipynb)
-class OneHotEncoderTemporal(SklearnTransformerTemporal):
+class TemporalDataOneHotEncoder(TemporalDataSklearnTransformer):
     requirements: Requirements = Requirements(
         dataset_requirements=DatasetRequirements(
             requires_static_covariates_present=False,
@@ -220,7 +220,7 @@ class OneHotEncoderTemporal(SklearnTransformerTemporal):
         to_transform = inverted_data_multiindex_df.loc[:, self.new_transformed_column_names]
         return to_transform, inverted_data_multiindex_df
 
-    def _fit(self, data: Dataset) -> "SklearnTransformerTemporal":
+    def _fit(self, data: Dataset, **kwargs) -> "TemporalDataSklearnTransformer":
         assert self.get_container(data) is not None
         to_transform, _ = self._get_data_to_transform(data)
         self.sklearn_model.fit(to_transform)
@@ -228,7 +228,7 @@ class OneHotEncoderTemporal(SklearnTransformerTemporal):
         self.sklearn_drop_idx = self.sklearn_model.drop_idx_[0] if self.sklearn_model.drop_idx_ is not None else None
         return self
 
-    def _transform(self, data: Dataset) -> Dataset:
+    def _transform(self, data: Dataset, **kwargs) -> Dataset:
         data = data.copy()
         assert self.get_container(data) is not None
 
@@ -266,7 +266,7 @@ class OneHotEncoderTemporal(SklearnTransformerTemporal):
         self.set_container(data, value=new_ts)
         return data
 
-    def _inverse_transform(self, data: Dataset) -> Dataset:
+    def _inverse_transform(self, data: Dataset, **kwargs) -> Dataset:
         data = data.copy()
         assert self.get_container(data) is not None
 

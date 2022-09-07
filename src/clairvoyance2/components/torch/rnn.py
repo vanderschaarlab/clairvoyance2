@@ -66,7 +66,7 @@ class RecurrentNet(nn.Module):
             if proj_size is None:
                 proj_size = 0
             kwargs["proj_size"] = proj_size
-        self.params = safe_init_dotmap(kwargs, _dynamic=False)
+        self.params = safe_init_dotmap(kwargs)
 
         self.rnn = rnn_class(**kwargs)
 
@@ -271,10 +271,15 @@ def packed(x: torch.Tensor, padding_indicator: float, batch_first: bool = True, 
                 raise RuntimeError("Found padding values not at the end of sequences")
 
     where_all_padding = padding_bools.all(dim=1)
-    out_lens_template = torch.zeros(size=where_all_padding.shape, dtype=torch.long, device=where_all_padding.device)
+
+    lengths_type = torch.int64
+    device = where_all_padding.device
+
+    out_lens_template = torch.zeros(size=where_all_padding.shape, dtype=lengths_type, device=device)
     x_exclude_all_padding_samples = x[~where_all_padding, :, :]
 
     x_seq_lens = (~padding_bools).sum(dim=1)[~where_all_padding]
+    x_seq_lens = x_seq_lens.to(device="cpu", dtype=lengths_type)
     x_packed = pack_padded_sequence(
         x_exclude_all_padding_samples, x_seq_lens, batch_first=batch_first, enforce_sorted=enforce_sorted
     )
@@ -294,7 +299,7 @@ def packed(x: torch.Tensor, padding_indicator: float, batch_first: bool = True, 
             device=x_unpacked.device,
         )
         out_template[~where_all_padding, :, :] = x_unpacked
-        out_lens_template[~where_all_padding] = x_unpacked_lens
+        out_lens_template[~where_all_padding] = x_unpacked_lens.to(device=device)
         packed_container.unpacked = out_template
         packed_container.unpacked_lens = out_lens_template
 
@@ -342,7 +347,9 @@ def apply_to_each_timestep(
             assert isinstance(is_padding_selector, torch.Tensor)
             module_in = module_in[~is_padding_selector]
             fill_val = padding_indicator
-        module_out_template = torch.full(size=(input_timestep.shape[0], output_size), fill_value=fill_val)
+        module_out_template = torch.full(
+            size=(input_timestep.shape[0], output_size), fill_value=fill_val, device=input_tensor.device
+        )
         if _DEBUG is True:  # pragma: no cover
             print("module_out_template.shape", module_out_template.shape)
 

@@ -9,6 +9,7 @@ from ..components.torch.interfaces import (
     CustomizableLossMixin,
     OrganizedModule,
     OrganizedPredictorModuleMixin,
+    SavableTorchModelMixin,
 )
 from ..components.torch.rnn import RecurrentFFNet, mask_and_reshape
 from ..data import DEFAULT_PADDING_INDICATOR, Dataset, TimeSeriesSamples
@@ -20,7 +21,6 @@ from ..interface import (
     TParams,
 )
 from ..interface import requirements as r
-from ..interface.saving import SavableTorchModelMixin
 from ..utils import tensor_like as tl
 from ..utils.array_manipulation import compute_deltas, n_step_shifted
 from ..utils.dev import NEEDED
@@ -38,7 +38,6 @@ class _DefaultParams(NamedTuple):
     nonlinearity: Optional[str] = None
     proj_size: Optional[int] = None
     max_len: Optional[int] = None
-    device_str: str = "cpu"
     optimizer_str: str = "Adam"
     optimizer_kwargs: Mapping[str, Any] = dict(lr=0.01, weight_decay=1e-5)
     batch_size: int = 32
@@ -57,7 +56,7 @@ class RecurrentNetNStepAheadPredictorBase(
 
     def __init__(self, loss_fn: nn.Module, params: Optional[TParams] = None) -> None:
         PredictorModel.__init__(self, params)
-        OrganizedModule.__init__(self, device=torch.device(self.params.device_str), dtype=torch.float)
+        OrganizedModule.__init__(self)
         CustomizableLossMixin.__init__(self, loss_fn=loss_fn)
 
         # Decoder RNN and corresponding predictor FF NN:
@@ -153,7 +152,7 @@ class RecurrentNetNStepAheadPredictorBase(
         dataloader = DataLoader(TensorDataset(t_cov, t_targ), batch_size=self.inferred_params.batch_size, shuffle=True)
         return (dataloader,)
 
-    def _prep_data_for_predict(self, data: Dataset, horizon: Horizon, **kwargs) -> Tuple[torch.Tensor, ...]:
+    def _prep_data_for_predict(self, data: Dataset, horizon: Optional[Horizon], **kwargs) -> Tuple[torch.Tensor, ...]:
         assert isinstance(horizon, NStepAheadHorizon)
         t_cov, _ = self._prep_torch_tensors(data, horizon, shift=False)
         return (t_cov,)
@@ -168,7 +167,10 @@ class RecurrentNetNStepAheadPredictorBase(
         self.rnn_ff.to(self.device, dtype=self.dtype)
         self.rnn_ff.eval()
 
-    def _fit(self, data: Dataset, horizon: Optional[Horizon] = NEEDED) -> "RecurrentNetNStepAheadPredictorBase":
+    def _fit(
+        self, data: Dataset, horizon: Optional[Horizon] = NEEDED, **kwargs
+    ) -> "RecurrentNetNStepAheadPredictorBase":
+        self.set_attributes_from_kwargs(**kwargs)
         dataloader, *_ = self.prep_fit(data=data, horizon=horizon)
 
         if TYPE_CHECKING:
@@ -216,7 +218,8 @@ class RecurrentNetNStepAheadPredictorBase(
 
         return self
 
-    def _predict(self, data: Dataset, horizon: Horizon) -> TimeSeriesSamples:
+    def _predict(self, data: Dataset, horizon: Optional[Horizon], **kwargs) -> TimeSeriesSamples:
+        self.set_attributes_from_kwargs(**kwargs)
         t_cov, *_ = self.prep_predict(data=data, horizon=horizon)
         if TYPE_CHECKING:
             assert self.rnn_ff is not None
@@ -240,14 +243,13 @@ class RecurrentNetNStepAheadPredictorBase(
         return prediction
 
 
-class RecurrentNetNStepAheadRegressor(RecurrentNetNStepAheadPredictorBase):
+class RNNRegressor(RecurrentNetNStepAheadPredictorBase):
     requirements: r.Requirements = r.Requirements(
         dataset_requirements=r.DatasetRequirements(
             temporal_covariates_value_type=r.DataValueOpts.NUMERIC,
             temporal_targets_value_type=r.DataValueOpts.NUMERIC,
             static_covariates_value_type=r.DataValueOpts.NUMERIC,
             requires_no_missing_data=True,
-            requires_all_temporal_containers_shares_index=True,
         ),
         prediction_requirements=r.PredictionRequirements(
             target_data_structure=r.DataStructureOpts.TIME_SERIES,
@@ -263,14 +265,13 @@ class RecurrentNetNStepAheadRegressor(RecurrentNetNStepAheadPredictorBase):
         super().__init__(loss_fn=nn.MSELoss(), params=params)
 
 
-class RecurrentNetNStepAheadClassifier(RecurrentNetNStepAheadPredictorBase):
+class RNNClassifier(RecurrentNetNStepAheadPredictorBase):
     requirements: r.Requirements = r.Requirements(
         dataset_requirements=r.DatasetRequirements(
             temporal_covariates_value_type=r.DataValueOpts.NUMERIC,
             temporal_targets_value_type=r.DataValueOpts.NUMERIC_CATEGORICAL,
             static_covariates_value_type=r.DataValueOpts.NUMERIC,
             requires_no_missing_data=True,
-            requires_all_temporal_containers_shares_index=True,
         ),
         prediction_requirements=r.PredictionRequirements(
             target_data_structure=r.DataStructureOpts.TIME_SERIES,

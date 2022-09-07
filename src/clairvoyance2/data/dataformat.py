@@ -1,14 +1,15 @@
 import warnings
-from typing import Any, Iterator, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Iterator, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
 
 from ..utils.common import empty_df_like
-from ..utils.dev import raise_not_implemented
 from . import df_constraints as dfc
 from .constants import (
     DEFAULT_PADDING_INDICATOR,
+    SAMPLE_INDEX_NAME,
+    TIME_INDEX_NAME,
     T_ContainerInitializable,
     T_ContainerInitializable_AsTuple,
     T_ElementsObjectType_AsTuple,
@@ -100,7 +101,7 @@ class TimeSeries(
         missing_indicator: TMissingIndicator = np.nan,
     ) -> None:
         # TODO: More ways to initialize features?
-        BaseContainer.__init__(self, data=data)
+        BaseContainer.__init__(self, data=data, index_name=TIME_INDEX_NAME)
         HasMissingMixin.__init__(self, missing_indicator=missing_indicator)
         self.validate()
 
@@ -277,6 +278,31 @@ class TimeSeriesSamples(
                 for c in self._data.columns:
                     self._data.at[idx, c] = ts.df[c]
 
+    def _df_repr_get_multi_index_df(self, at_internal_idx: int):
+        mi = pd.concat([self._internal[at_internal_idx].df.head()], axis=0, keys=[self.sample_index[at_internal_idx]])
+        mi.index.rename([SAMPLE_INDEX_NAME, TIME_INDEX_NAME], inplace=True)
+        return mi
+
+    @property
+    def df_repr(self):
+        repr_ = self._df_repr_get_multi_index_df(at_internal_idx=0).__repr__()
+        if self._internal[0].df.head().shape[0] < self._internal[0].df.shape[0] or len(self._internal) > 1:
+            repr_ += "\n..."
+        if len(self._internal) > 1:
+            repr_ += "\n" + self._df_repr_get_multi_index_df(at_internal_idx=-1).__repr__()
+        return repr_
+
+    @property
+    def df_repr_html(self):
+        repr_ = self._df_repr_get_multi_index_df(at_internal_idx=0)._repr_html_()  # pylint: disable=protected-access
+        if self._internal[0].df.head().shape[0] < self._internal[0].df.shape[0] or len(self._internal) > 1:
+            repr_ += "<p>...</p>"
+        if len(self._internal) > 1:
+            repr_ += self._df_repr_get_multi_index_df(  # pylint: disable=protected-access
+                at_internal_idx=-1
+            )._repr_html_()
+        return repr_
+
     @property
     def _df_for_features(self) -> pd.DataFrame:
         return self._internal[0].df
@@ -389,15 +415,29 @@ class TimeSeriesSamples(
         else:
             return all([x == diff_list[0] for x in diff_list]), diff_list[0]
 
-    def samples_aligned(self) -> bool:
-        raise_not_implemented("samples_aligned() check on timeseries samples.")
+    @property
+    def all_samples_same_n_timesteps(self) -> bool:
+        t0 = self.n_timesteps_per_sample[0]
+        return all(t == t0 for t in self.n_timesteps_per_sample)
+
+    @property
+    def all_samples_aligned(self) -> bool:
+        t0 = self._internal[0]
+        for ts in self:
+            if ts.n_timesteps != t0.n_timesteps:
+                return False
+            if not (ts.time_index == t0.time_index).all():
+                return False
+        return True
 
     def validate(self):
         BaseContainer.validate(self)
         self._init_features()
 
     def to_multi_index_dataframe(self) -> pd.DataFrame:
-        return pd.concat([ts.df for ts in self], axis=0, keys=self.sample_index)
+        multi_index_df = pd.concat([ts.df for ts in self], axis=0, keys=self.sample_index)
+        multi_index_df.index.rename([SAMPLE_INDEX_NAME, TIME_INDEX_NAME], inplace=True)
+        return multi_index_df
 
     @property
     def sample_index(self) -> T_SampleIndexClass:
@@ -512,31 +552,110 @@ class StaticSamples(
         return new
 
 
-THasTimeIndex = TypeVar("THasTimeIndex", TimeSeries, TimeSeriesSamples)
+# TODO: Currently supports only one type of event. Support multiple events - tricky.
+# TODO: Proper tests.
+class EventSamples(
+    HasFeaturesMixin,
+    HasMissingMixin,
+    Copyable,
+    SupportsNewLike,
+    BaseContainer[T_SamplesIndexDtype, T_FeatureIndexDtype],
+):
+    _df_constraints = dfc.Constraints(
+        on_index=None,  # TODO: Rework.
+        on_columns=_DF_CONSTRAINTS_FEATURES,
+        on_elements=_DF_CONSTRAINT_DATAPOINTS,
+    )
 
+    def __init__(
+        self,
+        data: pd.DataFrame,  # Multi-index dataframe with index 0 samples, index 1 timesteps.
+        missing_indicator: TMissingIndicator = np.nan,
+    ) -> None:
+        assert isinstance(data, pd.DataFrame)
+        BaseContainer.__init__(self, data=data, index_name=[SAMPLE_INDEX_NAME, TIME_INDEX_NAME])
+        HasMissingMixin.__init__(self, missing_indicator=missing_indicator)
+        self.validate()
 
-def time_index_equal(a: THasTimeIndex, b: THasTimeIndex) -> bool:
-    if isinstance(a, TimeSeries):
-        return _time_index_equal__time_series(a, b)
-    elif isinstance(a, TimeSeriesSamples):
-        return _time_index_equal__time_series_samples(a, b)
-    else:
-        raise TypeError(f"Unexpected type encountered: {type(a)}")
+    @staticmethod
+    def from_df(data: pd.DataFrame, column_sample_index: T_FeatureIndexDtype, column_time_index: T_FeatureIndexDtype):
+        data = data.set_index([column_sample_index, column_time_index], drop=True)
+        return EventSamples(data=data, missing_indicator=np.nan)
 
+    # --- Sequence Interface ---
 
-def _time_index_equal__time_series(a: TimeSeries, b: TimeSeries) -> bool:
-    if len(a.time_index) != len(b.time_index):
-        return False
-    else:
-        return (a.time_index == b.time_index).all()
+    def _getitem_index_helper(self, index_key) -> pd.DataFrame:
+        new_data: pd.DataFrame = self._data.loc[index_key, :, :]  # loc[] call modified.
+        if isinstance(new_data, pd.Series) or not isinstance(new_data.index, pd.MultiIndex):
+            new_data = self._data.loc[[index_key], :, :]  # loc[] call modified.
+        return new_data
 
+    def _getitem_column_helper(self, column_key) -> pd.DataFrame:
+        new_data: pd.DataFrame = self._data.loc[(slice(None), slice(None)), column_key]  # loc[] call modified.
+        if isinstance(new_data, pd.Series):
+            new_data = self._data.loc[(slice(None), slice(None)), [column_key]]  # loc[] call modified.
+        return new_data
 
-def _time_index_equal__time_series_samples(a: TimeSeriesSamples, b: TimeSeriesSamples) -> bool:
-    if a.sample_indices != b.sample_indices:
-        return False
-    return all(_time_index_equal__time_series(a_, b_) for a_, b_ in zip(a, b))
+    def _getitem_index(self, index_key):
+        new_data = self._getitem_index_helper(index_key)
+        return self.new_like(like=self, data=new_data)
 
+    def _getitem_column(self, column_key):
+        new_data = self._getitem_column_helper(column_key)
+        return self.new_like(like=self, data=new_data)
 
-# Next steps:
-# TODO: TimeToEvent - a version of StaticSamples with some constraints.
-# TODO: Think whether implementing TemporalDataset class is needed.
+    def __getitem__(self, key) -> "EventSamples":
+        return super().__getitem__(key)
+
+    def __len__(self) -> int:
+        return len(self._data.index.get_level_values(0))
+
+    def __iter__(self) -> Iterator:
+        for idx in self._data.index.get_level_values(0):
+            yield self[idx]
+
+    def __contains__(self, value) -> bool:
+        return value in self._data.index.get_level_values(0)
+
+    def __reversed__(self) -> Iterator:
+        for idx in self._data.index.get_level_values(0)[::-1]:
+            yield self[idx]
+
+    # --- Sequence Interface (End) ---
+
+    @property
+    def n_samples(self) -> int:
+        return len(self._data.index.get_level_values(0))
+
+    def validate(self):
+        BaseContainer.validate(self)
+        assert isinstance(self._data.index, pd.MultiIndex)
+        assert len(self._data.index.levels) == 2
+        assert isinstance(self._data.index.get_level_values(0), T_SampleIndexClass_AsTuple)
+        assert isinstance(self._data.index.get_level_values(1), T_TSIndexClass_AsTuple)
+        assert len(self._data.index.get_level_values(0)) == len(self._data.index.get_level_values(0))
+        self._init_features()
+
+    @property
+    def sample_index(self) -> T_SampleIndexClass:
+        return self._data.index.get_level_values(0)
+
+    @property
+    def sample_indices(self) -> Sequence[T_SamplesIndexDtype]:
+        return list(self.sample_index)
+
+    @staticmethod
+    def new_like(like: "EventSamples", **kwargs) -> "EventSamples":
+        kwargs = SupportsNewLike.process_kwargs(
+            kwargs,
+            dict(
+                missing_indicator=like.missing_indicator,
+            ),
+        )
+        return EventSamples(**kwargs)  # type: ignore  # Mypy complains about kwargs but it's fine.
+
+    @staticmethod
+    def new_empty_like(like: "EventSamples", **kwargs) -> "EventSamples":
+        new = EventSamples.new_like(like=like, data=like.df, **kwargs)
+        new.df = empty_df_like(new.df)
+        return new

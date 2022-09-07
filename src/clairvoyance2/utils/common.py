@@ -93,8 +93,15 @@ def empty_df_like(like_df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def safe_init_dotmap(o: object, _dynamic: bool) -> DotMap:
-    return DotMap(o, _dynamic=_dynamic) if not isinstance(o, DotMap) else o
+def is_namedtuple(o: Any) -> bool:
+    if isinstance(o, DotMap):
+        return False  # Needed as the below hasattr checks will always return true for DotMap.
+    # Credit for below line: https://stackoverflow.com/a/62692640
+    return isinstance(o, tuple) and hasattr(o, "_asdict") and hasattr(o, "_fields")
+
+
+def safe_init_dotmap(o: object) -> DotMap:
+    return DotMap(o, _dynamic=False)
 
 
 def split_multi_index_dataframe(df: pd.DataFrame) -> Iterable[pd.DataFrame]:

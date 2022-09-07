@@ -5,6 +5,7 @@ from .model import (
     TCounterfactualPredictions,
     TDefaultParams,
     TParams,
+    TPredictOutput,
     TransformerModel,
     TreatmentEffectsModel,
     TTreatmentScenarios,
@@ -18,7 +19,7 @@ from .requirements import (
     Requirements,
     TreatmentEffectsRequirements,
 )
-from .saving import SavableModelMixin, SavableTorchModelMixin
+from .saving import SavableModelMixin
 
 __all__ = [
     "BaseModel",
@@ -32,11 +33,11 @@ __all__ = [
     "PredictorModel",
     "Requirements",
     "SavableModelMixin",
-    "SavableTorchModelMixin",
     "TCounterfactualPredictions",
     "TDefaultParams",
     "TimeIndexHorizon",
     "TParams",
+    "TPredictOutput",
     "TransformerModel",
     "TreatmentEffectsModel",
     "TreatmentEffectsRequirements",

@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from clairvoyance2.data import TimeSeriesSamples
-from clairvoyance2.metrics import mse_ts
+from clairvoyance2.metrics import mse_t
 
 
 class TestIntegration:
@@ -63,7 +63,7 @@ class TestIntegration:
             data_true = TimeSeriesSamples(dfs_true)
             data_pred = TimeSeriesSamples(dfs_pred)
 
-            metric = mse_ts(data_true, data_pred)
+            metric = mse_t(data_true, data_pred)
 
             assert np.isclose(metric, expected_value)
 
@@ -122,6 +122,6 @@ class TestIntegration:
             data_true = TimeSeriesSamples(dfs_true)
             data_pred = TimeSeriesSamples(dfs_pred)
 
-            metric = mse_ts(data_true, data_pred)
+            metric = mse_t(data_true, data_pred)
 
             assert np.isclose(metric, expected_value)

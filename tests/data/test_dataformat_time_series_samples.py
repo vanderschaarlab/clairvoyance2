@@ -550,6 +550,33 @@ class TestIntegration:
             assert is_regular is False
             assert diff is None
 
+    @pytest.mark.parametrize(
+        "ts_1, expectation",
+        [
+            (TimeSeries(data=pd.DataFrame({"a": [10, 20, 30], "b": [-1.0, -2.0, -3.0]}, index=[8, 20, 21])), True),
+            (TimeSeries(data=pd.DataFrame({"a": [10, 20], "b": [-1.0, -2.0]}, index=[2, 3])), False),
+        ],
+    )
+    def test_samples_have_same_n_timesteps(self, ts_1, expectation):
+        ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}, index=[1, 2, 3]))
+        tss = TimeSeriesSamples(data=[ts_0, ts_1])
+
+        assert tss.all_samples_same_n_timesteps is expectation
+
+    @pytest.mark.parametrize(
+        "ts_1, expectation",
+        [
+            (TimeSeries(data=pd.DataFrame({"a": [10, 20, 30], "b": [-1.0, -2.0, -3.0]}, index=[1, 2, 3])), True),
+            (TimeSeries(data=pd.DataFrame({"a": [10, 20, 30], "b": [-1.0, -2.0, -3.0]}, index=[8, 20, 21])), False),
+            (TimeSeries(data=pd.DataFrame({"a": [10, 20], "b": [-1.0, -2.0]}, index=[2, 3])), False),
+        ],
+    )
+    def test_samples_aligned(self, ts_1, expectation):
+        ts_0 = TimeSeries(data=pd.DataFrame({"a": [1, 2, 3], "b": [1.0, 2.0, 3.0]}, index=[1, 2, 3]))
+        tss = TimeSeriesSamples(data=[ts_0, ts_1])
+
+        assert tss.all_samples_aligned is expectation
+
     def test_copy(self, three_numeric_dfs):
         tss = TimeSeriesSamples(
             [

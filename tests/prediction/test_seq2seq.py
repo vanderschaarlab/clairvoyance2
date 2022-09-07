@@ -3,16 +3,17 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
+import torch
 
 if TYPE_CHECKING:
     from clairvoyance2.data import Dataset, TimeSeriesSamples, TimeSeries
 from clairvoyance2.datasets.dummy import dummy_dataset
 from clairvoyance2.prediction.seq2seq import (
-    Seq2SeqCRNStyleClassifier,
-    Seq2SeqCRNStyleRegressor,
+    Seq2SeqClassifier,
+    Seq2SeqRegressor,
     TimeIndexHorizon,
 )
-from clairvoyance2.preprocessing import ExtractTargetsTC
+from clairvoyance2.preprocessing import TemporalTargetsExtractor
 
 # pylint: disable=redefined-outer-name
 # ^ Otherwise pylint trips up on pytest fixtures.
@@ -84,10 +85,10 @@ class TestIntegration:
         )
         def test_fit_predict_vary_targets_and_horizon(self, dummy_data, targets, horizon_n_future_step, param_rnn_type):
             # Arrange.
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = Seq2SeqCRNStyleRegressor(
+            predictor = Seq2SeqRegressor(
                 params=dict(
                     encoder_hidden_size=10,
                     decoder_hidden_size=10,
@@ -101,7 +102,7 @@ class TestIntegration:
             horizon = TimeIndexHorizon.future_horizon_from_dataset(
                 data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
             )
-            predictor: Seq2SeqCRNStyleRegressor = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqRegressor = predictor.fit(data, horizon=horizon)
             data_pred = predictor.predict(data, horizon=horizon)
 
             # Assert.
@@ -110,10 +111,10 @@ class TestIntegration:
         def test_fit_predict_non_future_horizon(self, dummy_data):
             # Arrange.
             targets = [0, 1]
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = Seq2SeqCRNStyleRegressor(
+            predictor = Seq2SeqRegressor(
                 params=dict(
                     encoder_hidden_size=10,
                     decoder_hidden_size=10,
@@ -127,7 +128,7 @@ class TestIntegration:
             horizon = TimeIndexHorizon(
                 time_index_sequence=[tc.time_index[len(tc.time_index) // 2 :] for tc in data.temporal_covariates]
             )
-            predictor: Seq2SeqCRNStyleRegressor = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqRegressor = predictor.fit(data, horizon=horizon)
             data_pred = predictor.predict(data, horizon=horizon)
 
             # Assert.
@@ -150,10 +151,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_future_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = Seq2SeqCRNStyleRegressor(
+            predictor = Seq2SeqRegressor(
                 params=dict(
                     encoder_hidden_size=param_encoder_hidden_size,
                     decoder_hidden_size=param_decoder_hidden_size,
@@ -169,7 +170,7 @@ class TestIntegration:
             horizon = TimeIndexHorizon.future_horizon_from_dataset(
                 data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
             )
-            predictor: Seq2SeqCRNStyleRegressor = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqRegressor = predictor.fit(data, horizon=horizon)
             data_pred = predictor.predict(data, horizon=horizon)
 
             # Assert.
@@ -188,10 +189,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_future_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = Seq2SeqCRNStyleRegressor(
+            predictor = Seq2SeqRegressor(
                 params=dict(
                     encoder_hidden_size=10,
                     decoder_hidden_size=20,
@@ -207,7 +208,7 @@ class TestIntegration:
             horizon = TimeIndexHorizon.future_horizon_from_dataset(
                 data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
             )
-            predictor: Seq2SeqCRNStyleRegressor = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqRegressor = predictor.fit(data, horizon=horizon)
             data_pred = predictor.predict(data, horizon=horizon)
 
             # Assert.
@@ -223,10 +224,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_future_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = Seq2SeqCRNStyleRegressor(
+            predictor = Seq2SeqRegressor(
                 params=dict(
                     encoder_hidden_size=10,
                     decoder_hidden_size=20,
@@ -242,7 +243,7 @@ class TestIntegration:
             horizon = TimeIndexHorizon.future_horizon_from_dataset(
                 data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
             )
-            predictor: Seq2SeqCRNStyleRegressor = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqRegressor = predictor.fit(data, horizon=horizon)
             data_pred = predictor.predict(data, horizon=horizon)
 
             # Assert.
@@ -258,10 +259,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_future_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = Seq2SeqCRNStyleRegressor(
+            predictor = Seq2SeqRegressor(
                 params=dict(
                     encoder_hidden_size=10,
                     decoder_hidden_size=20,
@@ -277,7 +278,7 @@ class TestIntegration:
             horizon = TimeIndexHorizon.future_horizon_from_dataset(
                 data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
             )
-            predictor: Seq2SeqCRNStyleRegressor = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqRegressor = predictor.fit(data, horizon=horizon)
             data_pred = predictor.predict(data, horizon=horizon)
 
             # Assert.
@@ -287,10 +288,10 @@ class TestIntegration:
             # Arrange.
             horizon_n_future_step = 3
             targets = [0, 1]
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data_no_static)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data_no_static)
 
             # Act.
-            predictor = Seq2SeqCRNStyleClassifier(
+            predictor = Seq2SeqClassifier(
                 params=dict(
                     encoder_hidden_size=10,
                     decoder_hidden_size=10,
@@ -304,7 +305,7 @@ class TestIntegration:
             horizon = TimeIndexHorizon.future_horizon_from_dataset(
                 data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
             )
-            predictor: Seq2SeqCRNStyleClassifier = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqClassifier = predictor.fit(data, horizon=horizon)
             data_pred = predictor.predict(data, horizon=horizon)
 
             # Assert.
@@ -326,7 +327,7 @@ class TestIntegration:
             )
 
             # Act.
-            predictor = Seq2SeqCRNStyleClassifier(
+            predictor = Seq2SeqClassifier(
                 params=dict(
                     encoder_hidden_size=10,
                     decoder_hidden_size=10,
@@ -340,8 +341,47 @@ class TestIntegration:
             horizon = TimeIndexHorizon.future_horizon_from_dataset(
                 data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
             )
-            predictor: Seq2SeqCRNStyleClassifier = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqClassifier = predictor.fit(data, horizon=horizon)
             data_pred = predictor.predict(data, horizon=horizon)
+
+            # Assert.
+            assert_all(data, data_pred, targets, horizon, predictor.params.padding_indicator)
+
+        def test_device_cuda(self):
+            if not torch.cuda.is_available():
+                pytest.skip("Skipping CUDA device test, as no CUDA devices available")
+
+            # Arrange.
+            horizon_n_future_step = 3
+            targets = [0, 1]
+            data = dummy_dataset(
+                n_samples=3,
+                temporal_covariates_n_features=5,
+                temporal_covariates_max_len=6,
+                temporal_covariates_missing_prob=0.0,
+                temporal_targets_n_categories=1,
+                temporal_targets_n_features=2,
+                static_covariates_n_features=0,
+                random_seed=12345,
+            )
+
+            # Act.
+            predictor = Seq2SeqClassifier(
+                params=dict(
+                    encoder_hidden_size=10,
+                    decoder_hidden_size=10,
+                    epochs=2,
+                    batch_size=2,
+                    encoder_rnn_type="LSTM",
+                    decoder_rnn_type="GRU",
+                    adapter_hidden_dims=[],
+                )
+            )
+            horizon = TimeIndexHorizon.future_horizon_from_dataset(
+                data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
+            )
+            predictor: Seq2SeqClassifier = predictor.fit(data, horizon=horizon, device="cuda")
+            data_pred = predictor.predict(data, horizon=horizon, device="cuda")
 
             # Assert.
             assert_all(data, data_pred, targets, horizon, predictor.params.padding_indicator)
@@ -350,10 +390,10 @@ class TestIntegration:
             # Arrange.
             targets = [2, 3]
             horizon_n_future_step = 2
-            data = ExtractTargetsTC(params=dict(targets=targets)).fit_transform(dummy_data)
+            data = TemporalTargetsExtractor(params=dict(targets=targets)).fit_transform(dummy_data)
 
             # Act.
-            predictor = Seq2SeqCRNStyleRegressor(
+            predictor = Seq2SeqRegressor(
                 params=dict(
                     encoder_hidden_size=10,
                     decoder_hidden_size=20,
@@ -370,10 +410,10 @@ class TestIntegration:
             horizon = TimeIndexHorizon.future_horizon_from_dataset(
                 data, forecast_n_future_steps=horizon_n_future_step, time_delta=1
             )
-            predictor: Seq2SeqCRNStyleRegressor = predictor.fit(data, horizon=horizon)
+            predictor: Seq2SeqRegressor = predictor.fit(data, horizon=horizon)
             path = os.path.join(tmpdir, "predictor.p")
             predictor.save(path)
-            loaded_model = Seq2SeqCRNStyleRegressor.load(path)
+            loaded_model = Seq2SeqRegressor.load(path)
 
             # Assert:
             assert os.path.exists(os.path.join(tmpdir, "predictor.p.params"))

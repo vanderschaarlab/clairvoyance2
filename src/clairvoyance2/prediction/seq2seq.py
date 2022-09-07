@@ -10,10 +10,11 @@ from ..components.torch.interfaces import (
     CustomizableLossMixin,
     OrganizedModule,
     OrganizedPredictorModuleMixin,
+    SavableTorchModelMixin,
 )
 from ..components.torch.rnn import RecurrentFFNet, RNNHidden, mask_and_reshape
 from ..data import DEFAULT_PADDING_INDICATOR, Dataset, StaticSamples, TimeSeriesSamples
-from ..data.utils import horizon_utils, split_time_series
+from ..data.utils import split_time_series, time_index_utils
 from ..interface import (
     Horizon,
     PredictorModel,
@@ -22,7 +23,6 @@ from ..interface import (
     TParams,
 )
 from ..interface import requirements as r
-from ..interface.saving import SavableTorchModelMixin
 from ..utils import tensor_like as tl
 from ..utils.array_manipulation import compute_deltas, n_step_shifted
 from ..utils.dev import NEEDED
@@ -61,7 +61,6 @@ class _DefaultParams(NamedTuple):
     predictor_out_activation: Optional[str] = None
     # Misc:
     max_len: Optional[int] = None
-    device_str: str = "cpu"
     optimizer_str: str = "Adam"
     optimizer_kwargs: Mapping[str, Any] = dict(lr=0.01, weight_decay=1e-5)
     batch_size: int = 32
@@ -77,7 +76,7 @@ class Seq2SeqCRNStylePredictorBase(
 
     def __init__(self, loss_fn: nn.Module, params: Optional[TParams] = None) -> None:
         PredictorModel.__init__(self, params)
-        OrganizedModule.__init__(self, device=torch.device(self.params.device_str), dtype=torch.float)
+        OrganizedModule.__init__(self)
         CustomizableLossMixin.__init__(self, loss_fn=loss_fn)
 
         # Decoder RNN and corresponding predictor FF NN, and optimizer:
@@ -298,10 +297,10 @@ class Seq2SeqCRNStylePredictorBase(
         n_timesteps = t_targ_td.shape[1]
         n_target_features = data.temporal_targets.n_features
         # Set up the right shape, but fill with nan, as these values should not be used.
-        t_targ = torch.full(size=(n_samples, n_timesteps, n_target_features), fill_value=torch.nan)
+        t_targ = torch.full(size=(n_samples, n_timesteps, n_target_features), fill_value=torch.nan, device=self.device)
         # The only values that need filling are the 0th timestep:
         # take the target(s) just before the 0th step defined in horizon time index.
-        ts_targ = horizon_utils.time_series_samples.take_one_before_horizon_start(
+        ts_targ = time_index_utils.time_series_samples.take_one_before_start(
             data.temporal_targets, horizon, inplace=False
         )
         t_targ_0 = ts_targ.to_torch_tensor(
@@ -336,13 +335,13 @@ class Seq2SeqCRNStylePredictorBase(
 
         return (*encoder_tensors, t_cov_to_encode, *decoder_tensors)
 
-    def _prep_data_for_predict(self, data: Dataset, horizon: Horizon, **kwargs) -> Tuple[torch.Tensor, ...]:
+    def _prep_data_for_predict(self, data: Dataset, horizon: Optional[Horizon], **kwargs) -> Tuple[torch.Tensor, ...]:
         assert data.temporal_covariates is not None
         assert data.temporal_targets is not None
         assert isinstance(horizon, TimeIndexHorizon)
 
         # Make sure to not use "future" values for prediction.
-        data_encode = horizon_utils.dataset.take_temporal_data_before_horizon_start(data, horizon, inplace=False)
+        data_encode = time_index_utils.dataset.take_temporal_data_before_start(data, horizon, inplace=False)
         if TYPE_CHECKING:
             assert data_encode is not None
 
@@ -533,7 +532,9 @@ class Seq2SeqCRNStylePredictorBase(
             epoch_loss /= n_samples_cumul
             print(f"Epoch: {epoch_idx}, Loss: {epoch_loss}")
 
-    def _fit(self, data: Dataset, horizon: Horizon = None) -> "Seq2SeqCRNStylePredictorBase":
+    def _fit(self, data: Dataset, horizon: Horizon = None, **kwargs) -> "Seq2SeqCRNStylePredictorBase":
+        self.set_attributes_from_kwargs(**kwargs)
+
         # Ensure there are at least 2 timesteps in the posterior part of TimeSeries after the split
         # (as we need to shift targets by 1).
         encoder_t_cov, encoder_t_targ, t_cov_to_encode, decoder_t_targ, decoder_input = self.prep_fit(
@@ -552,7 +553,9 @@ class Seq2SeqCRNStylePredictorBase(
 
         return self
 
-    def _predict(self, data: Dataset, horizon: Horizon) -> TimeSeriesSamples:
+    def _predict(self, data: Dataset, horizon: Optional[Horizon], **kwargs) -> TimeSeriesSamples:
+        self.set_attributes_from_kwargs(**kwargs)
+
         data = data.copy()
         if TYPE_CHECKING:
             assert self.decoder is not None
@@ -580,14 +583,13 @@ class Seq2SeqCRNStylePredictorBase(
         return prediction
 
 
-class Seq2SeqCRNStyleRegressor(Seq2SeqCRNStylePredictorBase):
+class Seq2SeqRegressor(Seq2SeqCRNStylePredictorBase):
     requirements: r.Requirements = r.Requirements(
         dataset_requirements=r.DatasetRequirements(
             temporal_covariates_value_type=r.DataValueOpts.NUMERIC,
             temporal_targets_value_type=r.DataValueOpts.NUMERIC,
             static_covariates_value_type=r.DataValueOpts.NUMERIC,
             requires_no_missing_data=True,
-            requires_all_temporal_containers_shares_index=True,
         ),
         prediction_requirements=r.PredictionRequirements(
             target_data_structure=r.DataStructureOpts.TIME_SERIES,
@@ -605,14 +607,13 @@ class Seq2SeqCRNStyleRegressor(Seq2SeqCRNStylePredictorBase):
         Seq2SeqCRNStylePredictorBase.__init__(self, loss_fn=nn.MSELoss(), params=params)
 
 
-class Seq2SeqCRNStyleClassifier(Seq2SeqCRNStylePredictorBase):
+class Seq2SeqClassifier(Seq2SeqCRNStylePredictorBase):
     requirements: r.Requirements = r.Requirements(
         dataset_requirements=r.DatasetRequirements(
             temporal_covariates_value_type=r.DataValueOpts.NUMERIC,
             temporal_targets_value_type=r.DataValueOpts.NUMERIC_CATEGORICAL,
             static_covariates_value_type=r.DataValueOpts.NUMERIC,
             requires_no_missing_data=True,
-            requires_all_temporal_containers_shares_index=True,
         ),
         prediction_requirements=r.PredictionRequirements(
             target_data_structure=r.DataStructureOpts.TIME_SERIES,

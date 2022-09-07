@@ -1,12 +1,9 @@
-from ..interface import NStepAheadHorizon, TimeIndexHorizon
-from .recurrent import RecurrentNetNStepAheadClassifier, RecurrentNetNStepAheadRegressor
-from .seq2seq import Seq2SeqCRNStyleClassifier, Seq2SeqCRNStyleRegressor
+from .recurrent import RNNClassifier, RNNRegressor
+from .seq2seq import Seq2SeqClassifier, Seq2SeqRegressor
 
 __all__ = [
-    "NStepAheadHorizon",
-    "RecurrentNetNStepAheadClassifier",
-    "RecurrentNetNStepAheadRegressor",
-    "Seq2SeqCRNStyleClassifier",
-    "Seq2SeqCRNStyleRegressor",
-    "TimeIndexHorizon",
+    "RNNClassifier",
+    "RNNRegressor",
+    "Seq2SeqClassifier",
+    "Seq2SeqRegressor",
 ]

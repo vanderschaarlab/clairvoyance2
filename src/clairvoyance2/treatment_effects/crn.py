@@ -24,7 +24,11 @@ from ..components.torch.rnn import (
 )
 from ..data import DEFAULT_PADDING_INDICATOR, Dataset, TimeSeries, TimeSeriesSamples
 from ..data.constants import T_SamplesIndexDtype
-from ..data.utils import horizon_utils, split_time_series, to_counterfactual_predictions
+from ..data.utils import (
+    split_time_series,
+    time_index_utils,
+    to_counterfactual_predictions,
+)
 from ..interface import (
     Horizon,
     TCounterfactualPredictions,
@@ -109,7 +113,6 @@ class _DefaultParams(NamedTuple):
     treat_net_out_activation: Optional[str] = None
     # Misc:
     max_len: Optional[int] = None
-    device_str: str = "cpu"
     optimizer_str: str = "Adam"
     optimizer_kwargs: Mapping[str, Any] = dict(lr=0.01, weight_decay=1e-5)
     batch_size: int = 32
@@ -310,8 +313,8 @@ class CRNTreatmentEffectsModelBase(
         if TYPE_CHECKING:
             assert data.temporal_treatments is not None
 
-        ts_treat = horizon_utils.time_series_samples.take_all_from_one_before_horizon_start(
-            time_series_samples_=data.temporal_treatments, horizon=horizon, inplace=False
+        ts_treat = time_index_utils.time_series_samples.take_all_from_one_before_start(
+            time_series_samples_=data.temporal_treatments, time_indexes=horizon, inplace=False
         )
         t_treat = ts_treat.to_torch_tensor(
             padding_indicator=self.params.padding_indicator,
@@ -335,7 +338,7 @@ class CRNTreatmentEffectsModelBase(
         if TYPE_CHECKING:
             assert data.temporal_treatments is not None
 
-        t_treat_last = horizon_utils.time_series_samples.take_one_before_horizon_start(
+        t_treat_last = time_index_utils.time_series_samples.take_one_before_start(
             data.temporal_treatments, horizon
         ).to_torch_tensor(
             padding_indicator=self.params.padding_indicator,
@@ -356,13 +359,13 @@ class CRNTreatmentEffectsModelBase(
 
         return decoder_input, t_treat_out
 
-    def _prep_data_for_predict(self, data: Dataset, horizon: Horizon, **kwargs) -> Tuple[torch.Tensor, ...]:
+    def _prep_data_for_predict(self, data: Dataset, horizon: Optional[Horizon], **kwargs) -> Tuple[torch.Tensor, ...]:
         assert data.temporal_covariates is not None
         assert data.temporal_targets is not None
         assert isinstance(horizon, TimeIndexHorizon)
 
         # Make sure to not use "future" values for prediction.
-        data_encode = horizon_utils.dataset.take_temporal_data_before_horizon_start(data, horizon, inplace=False)
+        data_encode = time_index_utils.dataset.take_temporal_data_before_start(data, horizon, inplace=False)
         if TYPE_CHECKING:
             assert data_encode is not None
 
@@ -380,7 +383,7 @@ class CRNTreatmentEffectsModelBase(
         data: Dataset,
         sample_index: T_SamplesIndexDtype,
         treatment_scenarios: TTreatmentScenarios,
-        horizon: Horizon,
+        horizon: Optional[Horizon],
         **kwargs,
     ) -> Tuple[Any, ...]:
         assert data.temporal_covariates is not None
@@ -388,7 +391,7 @@ class CRNTreatmentEffectsModelBase(
         assert isinstance(horizon, TimeIndexHorizon)
 
         # Make sure to not use "future" values for prediction.
-        data_encode = horizon_utils.dataset.take_temporal_data_before_horizon_start(data, horizon, inplace=False)
+        data_encode = time_index_utils.dataset.take_temporal_data_before_start(data, horizon, inplace=False)
         if TYPE_CHECKING:
             assert data_encode is not None
 
@@ -399,6 +402,7 @@ class CRNTreatmentEffectsModelBase(
         decoder_input_list = []
         decoder_t_treat_out_list = []
         for treatment_scenario in treatment_scenarios:
+            assert isinstance(treatment_scenario, TimeSeries)
             decoder_input, decoder_t_treat_out = self._prep_torch_tensors_decoder_inference_counterfactuals(
                 data, treatment_scenario, horizon
             )
@@ -590,7 +594,9 @@ class CRNTreatmentEffectsModelBase(
                 f"Lambda: {lambda_:.3f}, Treatment BR Loss: {epoch_loss_treat:.3f}, Loss: {epoch_loss:.3f}"
             )
 
-    def _fit(self, data: Dataset, horizon: Horizon = None) -> "CRNTreatmentEffectsModelBase":
+    def _fit(self, data: Dataset, horizon: Horizon = None, **kwargs) -> "CRNTreatmentEffectsModelBase":
+        self.set_attributes_from_kwargs(**kwargs)
+
         # Ensure there are at least 3 timesteps in the "post" part of TimeSeries after the split and
         # at least 3 timesteps in the "pre" part. This is due to the cov./targ./treat. shifts that are needed.
         (
@@ -618,7 +624,9 @@ class CRNTreatmentEffectsModelBase(
 
         return self
 
-    def _predict(self, data: Dataset, horizon: Horizon) -> TimeSeriesSamples:
+    def _predict(self, data: Dataset, horizon: Optional[Horizon], **kwargs) -> TimeSeriesSamples:
+        self.set_attributes_from_kwargs(**kwargs)
+
         data = data.copy()
         if TYPE_CHECKING:
             assert self.decoder is not None
@@ -655,9 +663,12 @@ class CRNTreatmentEffectsModelBase(
         data: Dataset,
         sample_index: T_SamplesIndexDtype,
         treatment_scenarios: TTreatmentScenarios,
-        horizon: TimeIndexHorizon,
+        horizon: Optional[Horizon],
+        **kwargs,
     ) -> TCounterfactualPredictions:
-        data = data.copy()
+        self.set_attributes_from_kwargs(**kwargs)
+
+        data = data[sample_index].copy()
         if TYPE_CHECKING:
             assert self.decoder is not None
             assert data.temporal_targets is not None
@@ -703,7 +714,7 @@ class CRNTreatmentEffectsModelBase(
         return list_ts
 
 
-class CRNTreatmentEffectsModelRegressor(CRNTreatmentEffectsModelBase):
+class CRNRegressor(CRNTreatmentEffectsModelBase):
     requirements: r.Requirements = r.Requirements(
         dataset_requirements=r.DatasetRequirements(
             temporal_covariates_value_type=r.DataValueOpts.NUMERIC,
@@ -711,7 +722,6 @@ class CRNTreatmentEffectsModelRegressor(CRNTreatmentEffectsModelBase):
             temporal_treatments_value_type=r.DataValueOpts.NUMERIC_BINARY,
             static_covariates_value_type=r.DataValueOpts.NUMERIC,
             requires_no_missing_data=True,
-            requires_all_temporal_containers_shares_index=True,
         ),
         prediction_requirements=r.PredictionRequirements(
             target_data_structure=r.DataStructureOpts.TIME_SERIES,
@@ -735,7 +745,7 @@ class CRNTreatmentEffectsModelRegressor(CRNTreatmentEffectsModelBase):
         super().__init__(loss_fn=nn.MSELoss(), params=params)
 
 
-class CRNTreatmentEffectsModelClassifier(CRNTreatmentEffectsModelBase):
+class CRNClassifier(CRNTreatmentEffectsModelBase):
     requirements: r.Requirements = r.Requirements(
         dataset_requirements=r.DatasetRequirements(
             temporal_covariates_value_type=r.DataValueOpts.NUMERIC,
@@ -743,7 +753,6 @@ class CRNTreatmentEffectsModelClassifier(CRNTreatmentEffectsModelBase):
             temporal_treatments_value_type=r.DataValueOpts.NUMERIC_BINARY,
             static_covariates_value_type=r.DataValueOpts.NUMERIC,
             requires_no_missing_data=True,
-            requires_all_temporal_containers_shares_index=True,
         ),
         prediction_requirements=r.PredictionRequirements(
             target_data_structure=r.DataStructureOpts.TIME_SERIES,

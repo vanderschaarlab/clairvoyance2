@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from clairvoyance2.data import Dataset, TimeSeriesSamples
-from clairvoyance2.imputation import DefaultImputerTC
+from clairvoyance2.imputation import TemporalDataDefaultImputer
 
 
 class TestIntegration:
@@ -24,7 +24,7 @@ class TestIntegration:
             }
         )
         ds = Dataset(TimeSeriesSamples([df_0, df_1]))
-        imputer = DefaultImputerTC()
+        imputer = TemporalDataDefaultImputer()
 
         before_has_missing = ds.temporal_covariates.has_missing
         ds = imputer.fit_transform(ds)

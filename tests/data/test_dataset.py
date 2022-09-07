@@ -15,10 +15,10 @@ from clairvoyance2.data import Dataset, StaticSamples, TimeSeriesSamples
 
 @pytest.fixture
 def mocked_containers_for_repr():
-    t_cov = Mock(spec=TimeSeriesSamples, features=("a", "b", "c"), n_samples=2)
-    t_targ = Mock(spec=TimeSeriesSamples, features=("l"), n_samples=2)
-    t_treat = Mock(spec=TimeSeriesSamples, features=("t"), n_samples=2)
-    s_cov = Mock(spec=StaticSamples, features=("x", "y", "z"), n_samples=2)
+    t_cov = Mock(spec=TimeSeriesSamples, features=("a", "b", "c"), n_samples=2, all_samples_same_n_timesteps=False)
+    t_targ = Mock(spec=TimeSeriesSamples, features=("l"), n_samples=2, all_samples_same_n_timesteps=False)
+    t_treat = Mock(spec=TimeSeriesSamples, features=("t"), n_samples=2, all_samples_same_n_timesteps=False)
+    s_cov = Mock(spec=StaticSamples, features=("x", "y", "z"), n_samples=2, all_samples_same_n_timesteps=False)
     return t_cov, s_cov, t_targ, t_treat
 
 
@@ -117,6 +117,23 @@ class TestRepr:
 
         assert repr_.replace("    ", "").replace("\n", "") == (
             "Dataset(temporal_covariates=TimeSeriesSamples([2,*,3]),)"
+        )
+
+    def test_t_cov_same_n_timesteps(self, patch_validate):
+        t_cov = Mock(
+            spec=TimeSeriesSamples,
+            features=("a", "b", "c"),
+            n_samples=2,
+            all_samples_same_n_timesteps=True,
+            n_timesteps_per_sample=[5, 5],
+        )
+
+        ds = Dataset(temporal_covariates=t_cov)
+
+        repr_ = str(ds)
+
+        assert repr_.replace("    ", "").replace("\n", "") == (
+            "Dataset(temporal_covariates=TimeSeriesSamples([2,5,3]),)"
         )
 
 
@@ -672,9 +689,9 @@ class TestIntegration:
             )
 
             with pytest.raises(KeyError) as excinfo:
-                index = "wrong_key"
+                index = Mock()
                 _ = ds[index]
-            assert "one of types" in str(excinfo.value) and "str" in str(excinfo.value)
+            assert "one of types" in str(excinfo.value) and "Mock" in str(excinfo.value)
 
         def test_iter(self, containers_for_dataset_init):
             # Arrange:

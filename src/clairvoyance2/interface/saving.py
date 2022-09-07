@@ -1,8 +1,6 @@
 import os
 import pickle
-from typing import Callable
 
-import torch
 from dotmap import DotMap
 
 from ..utils.common import safe_init_dotmap
@@ -42,39 +40,10 @@ class SavableModelMixin:
         params_file_path = SavableModelMixin._get_params_file_path(path)
         with open(params_file_path, "rb") as f:
             loaded_from_params_file = pickle.load(f)
-        params = safe_init_dotmap(loaded_from_params_file["params"], _dynamic=False)
-        inferred_params = safe_init_dotmap(loaded_from_params_file["inferred_params"], _dynamic=False)
+        params = safe_init_dotmap(loaded_from_params_file["params"])
+        inferred_params = safe_init_dotmap(loaded_from_params_file["inferred_params"])
         new = cls(params=params)  # type: ignore
         # NOTE: ^ This Mixin assumes that the class is BaseModel-like, so it's expected to have an initialization like:
         # __init___(self, params).
         new.inferred_params = inferred_params
         return new
-
-
-class SavableTorchModelMixin(SavableModelMixin):
-    state_dict: Callable
-    load_state_dict: Callable
-    _init_submodules: Callable[[], None]
-
-    def save(self, path: str) -> None:
-        super().save(path)
-        torch.save(self.state_dict(), path)
-
-    @classmethod
-    def load(cls, path: str):
-        # Load `params` and `inferred params`:
-        loaded = super().load(path)
-
-        # Run _init_submodules() if our model provides this method.
-        has_init_submodules_method = False
-        try:
-            _ = loaded._init_submodules  # pylint: disable=protected-access
-            has_init_submodules_method = True
-        except AttributeError:
-            pass
-        if has_init_submodules_method:
-            loaded._init_submodules()  # pylint: disable=protected-access
-
-        # Finally, load the state dict.
-        loaded.load_state_dict(torch.load(path))
-        return loaded

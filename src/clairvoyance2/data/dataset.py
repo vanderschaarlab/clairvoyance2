@@ -5,8 +5,10 @@ from typing import Callable, Dict, Iterator, Optional, Sequence, Tuple, Union
 import numpy as np
 
 from ..utils.dev import raise_not_implemented
+from ._utils import time_index_equal
 from .constants import T_SamplesIndexDtype
 from .dataformat import (
+    EventSamples,
     StaticSamples,
     T_ContainerInitializable,
     T_SampleIndex_Compatible,
@@ -15,22 +17,33 @@ from .dataformat import (
     T_TSS_ContainerInitializable,
     TimeSeriesSamples,
     TMissingIndicator,
-    time_index_equal,
 )
 from .dataformat_base import Copyable, SupportsNewLike
 
 T_TimeSeriesSamplesInitializable = Union[TimeSeriesSamples, Sequence[T_TSS_ContainerInitializable]]
 T_StaticSamplesInitializable = Union[StaticSamples, T_ContainerInitializable]
+T_EventSamplesInitializable = Union[EventSamples]  # pyright: ignore
 
 
 # TODO: Should probably implement a number of mixins that TimeSeriesSamples etc. have.
 class Dataset(Copyable, SupportsNewLike, SequenceABC):
     temporal_covariates: TimeSeriesSamples
     static_covariates: Optional[StaticSamples] = None
+    event_covariates: Optional[EventSamples] = None
     temporal_targets: Optional[TimeSeriesSamples] = None
     temporal_treatments: Optional[TimeSeriesSamples] = None
+    event_targets: Optional[EventSamples] = None
+    event_treatments: Optional[EventSamples] = None
 
-    _container_names = ["temporal_covariates", "static_covariates", "temporal_targets", "temporal_treatments"]
+    _container_names = [
+        "temporal_covariates",
+        "static_covariates",
+        "event_covariates",
+        "temporal_targets",
+        "temporal_treatments",
+        "event_targets",
+        "event_treatments",
+    ]
     # NOTE: ^ Keep the above in the same order as these are initialized in the constructor.
     _container_order = {
         container_name: container_order for container_order, container_name in enumerate(_container_names)
@@ -48,12 +61,21 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
         else:
             return StaticSamples(data, **kwargs)
 
+    def _init_event_samples(self, data: T_EventSamplesInitializable, **kwargs) -> EventSamples:
+        if isinstance(data, EventSamples):
+            return data
+        else:
+            return EventSamples(data, **kwargs)
+
     def __init__(
         self,
         temporal_covariates: T_TimeSeriesSamplesInitializable,
         static_covariates: Optional[T_StaticSamplesInitializable] = None,
+        event_covariates: Optional[T_EventSamplesInitializable] = None,
         temporal_targets: Optional[T_TimeSeriesSamplesInitializable] = None,
         temporal_treatments: Optional[T_TimeSeriesSamplesInitializable] = None,
+        event_targets: Optional[T_EventSamplesInitializable] = None,
+        event_treatments: Optional[T_EventSamplesInitializable] = None,
         # NOTE: The below arguments are only applicable when *initializing* the above containers from DF, array etc.,
         # not applicable when passing as TimeSeriesSamples/StaticSamples objects.
         # TODO: Maybe this is not user-friendly, could redo such that it will always set these.
@@ -71,6 +93,8 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
                 sample_indices=sample_indices,
                 missing_indicator=missing_indicator,
             )
+        if event_covariates is not None:
+            self.event_covariates = self._init_event_samples(data=event_covariates)
         if temporal_targets is not None:
             self.temporal_targets = self._init_time_series_samples(
                 temporal_targets,
@@ -83,6 +107,10 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
                 sample_indices=sample_indices,
                 missing_indicator=missing_indicator,
             )
+        if event_targets is not None:
+            self.event_targets = self._init_event_samples(data=event_targets)
+        if event_treatments is not None:
+            self.event_treatments = self._init_event_samples(data=event_treatments)
 
         self._refresh_container_dicts()
 
@@ -100,26 +128,43 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
             "temporal_targets": self.temporal_targets,
             "temporal_treatments": self.temporal_treatments,
         }
+        self._event_data_containers: Dict[str, Optional[EventSamples]] = {
+            "event_covariates": self.event_covariates,
+            "event_targets": self.event_targets,
+            "event_treatments": self.event_treatments,
+        }
 
-        self._all_data_containers: Dict[str, Union[Optional[StaticSamples], Optional[TimeSeriesSamples]]] = copy.copy(
+        self._all_data_containers: Dict[str, Union[StaticSamples, TimeSeriesSamples, EventSamples, None]] = copy.copy(
             self._static_data_containers  # type: ignore  # Invariance issue, ignore.
         )
         self._all_data_containers.update(self._temporal_data_containers)
+        self._all_data_containers.update(self._event_data_containers)
 
         self._static_data_containers = self._sort_container_dict(self._static_data_containers)
         self._temporal_data_containers = self._sort_container_dict(self._temporal_data_containers)
+        self._event_data_containers = self._sort_container_dict(self._event_data_containers)
         self._all_data_containers = self._sort_container_dict(self._all_data_containers)
 
     @staticmethod
     def _time_series_samples_repr(time_series_samples: TimeSeriesSamples) -> str:
         name = time_series_samples.__class__.__name__
-        shape = f"[{time_series_samples.n_samples},*,{len(time_series_samples.features)}]"
+        if time_series_samples.all_samples_same_n_timesteps:
+            n_timesteps = str(time_series_samples.n_timesteps_per_sample[0])
+        else:
+            n_timesteps = "*"
+        shape = f"[{time_series_samples.n_samples},{n_timesteps},{len(time_series_samples.features)}]"
         return f"{name}({shape})"
 
     @staticmethod
     def _static_samples_repr(static_samples: StaticSamples) -> str:
         name = static_samples.__class__.__name__
         shape = f"[{static_samples.n_samples},{len(static_samples.features)}]"
+        return f"{name}({shape})"
+
+    @staticmethod
+    def _event_samples_repr(event_samples: EventSamples) -> str:
+        name = event_samples.__class__.__name__
+        shape = f"[{event_samples.n_samples},{len(event_samples.features)}]"
         return f"{name}({shape})"
 
     def __repr__(self) -> str:
@@ -130,8 +175,10 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
         for container_name, container in self.all_data_containers.items():
             if isinstance(container, StaticSamples):
                 repr_helper: Callable = self._static_samples_repr
-            else:
+            elif isinstance(container, TimeSeriesSamples):
                 repr_helper = self._time_series_samples_repr
+            else:
+                repr_helper = self._event_samples_repr
             attributes_repr += f"{sep}{container_name}={repr_helper(container)},"
 
         return f"{self.__class__.__name__}({attributes_repr}\n)"
@@ -168,7 +215,12 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
         return {k: v for k, v in self._temporal_data_containers.items() if v is not None}
 
     @property
-    def all_data_containers(self) -> Dict[str, Union[StaticSamples, TimeSeriesSamples]]:
+    def event_data_containers(self) -> Dict[str, EventSamples]:
+        self._refresh_container_dicts()
+        return {k: v for k, v in self._event_data_containers.items() if v is not None}
+
+    @property
+    def all_data_containers(self) -> Dict[str, Union[StaticSamples, TimeSeriesSamples, EventSamples]]:
         self._refresh_container_dicts()
         return {k: v for k, v in self._all_data_containers.items() if v is not None}
 
@@ -204,8 +256,11 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
             dict(
                 temporal_covariates=like.temporal_covariates,
                 static_covariates=like.static_covariates,
+                event_covariates=like.event_covariates,
                 temporal_targets=like.temporal_targets,
                 temporal_treatments=like.temporal_treatments,
+                event_targets=like.event_targets,
+                event_treatments=like.event_treatments,
                 sample_indices=like.temporal_covariates.sample_indices,
                 missing_indicator=like.temporal_covariates.missing_indicator,
             ),
@@ -219,11 +274,13 @@ class Dataset(Copyable, SupportsNewLike, SequenceABC):
     # --- Sequence Interface ---
 
     def __getitem__(self, key) -> "Dataset":
-        if not isinstance(key, T_SamplesIndexDtype_AsTuple):
-            raise KeyError(f"Expected `key` to be one of types {T_SamplesIndexDtype_AsTuple} but {type(key)} found")
+        if not isinstance(key, (slice)) and not hasattr(key, "__len__"):
+            if not isinstance(key, T_SamplesIndexDtype_AsTuple):
+                raise KeyError(f"Expected `key` to be one of types {T_SamplesIndexDtype_AsTuple} but {type(key)} found")
+            key = (key,)
         kwargs = dict()
         for container_name, container in self.all_data_containers.items():
-            kwargs[container_name] = container[(key,)]
+            kwargs[container_name] = container[key]
         return self.new_like(like=self, **kwargs)
 
     def __len__(self) -> int:

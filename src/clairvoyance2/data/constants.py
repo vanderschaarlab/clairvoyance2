@@ -107,3 +107,5 @@ TIndexDiff = Union[float, int, pd.Timedelta]
 # Values.
 
 DEFAULT_PADDING_INDICATOR = -999.0
+SAMPLE_INDEX_NAME = "s_idx"
+TIME_INDEX_NAME = "t_idx"

@@ -21,7 +21,7 @@ def mock_model_for_process_params():
             # Do nothing here on purpose.
             pass
 
-        def _fit(self, data: Dataset) -> "MyModel":
+        def _fit(self, data: Dataset, **kwargs) -> "MyModel":
             # Do something...
             return self
 
@@ -38,7 +38,7 @@ class TestBaseModel:
             mock_check_model_requirements = Mock()
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyModel":
                 # Do something...
                 return self
 
@@ -65,7 +65,7 @@ class TestBaseModel:
             mock_fit = Mock()
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyModel":
                 # Do something...
                 self.mock_fit(data)
                 return self
@@ -169,7 +169,7 @@ class TestBaseModel:
                 mock_check_model_requirements = Mock()
                 DEFAULT_PARAMS = default_params
 
-                def _fit(self, data: Dataset) -> "MyModel":
+                def _fit(self, data: Dataset, **kwargs) -> "MyModel":
                     # Do something...
                     return self
 
@@ -183,17 +183,17 @@ class TestBaseModel:
             assert "MyModel(" == repr_[0:8]
             assert repr_[-1] == ")"
             assert "\n" in repr_
-            assert "params=" in repr_
-            assert "inferred_params=" not in repr_
-            assert "'param_1': 0" in repr_
-            assert "'param_2': [1, 22]" in repr_
+            assert "params:" in repr_
+            assert "inferred_params:" not in repr_
+            assert '"param_1": 0' in repr_
+            assert '"param_2":[1,22]' in repr_.replace("\n", "").replace(" ", "")
 
         def test_empty_params(self):
             class MyModel(BaseModel):
                 mock_check_model_requirements = Mock()
                 DEFAULT_PARAMS = dict()
 
-                def _fit(self, data: Dataset) -> "MyModel":
+                def _fit(self, data: Dataset, **kwargs) -> "MyModel":
                     # Do something...
                     return self
 
@@ -207,8 +207,8 @@ class TestBaseModel:
             assert "MyModel(" == repr_[0:8]
             assert repr_[-1] == ")"
             assert "\n" in repr_
-            assert "params=" in repr_
-            assert "inferred_params=" not in repr_
+            assert "params:" in repr_
+            assert "inferred_params:" not in repr_
             assert "{}" in repr_
 
         def test_has_inferred_params(self):
@@ -216,7 +216,7 @@ class TestBaseModel:
                 mock_check_model_requirements = Mock()
                 DEFAULT_PARAMS = {"param_1": 0, "param_2": [1, 22]}
 
-                def _fit(self, data: Dataset) -> "MyModel":
+                def _fit(self, data: Dataset, **kwargs) -> "MyModel":
                     # Do something...
                     return self
 
@@ -232,12 +232,12 @@ class TestBaseModel:
             assert "MyModel(" == repr_[0:8]
             assert repr_[-1] == ")"
             assert "\n" in repr_
-            assert "params=" in repr_
-            assert "inferred_params=" in repr_
-            assert "'param_1': 0" in repr_
-            assert "'param_2': [1, 22]" in repr_
-            assert "'ip_1': 123" in repr_
-            assert "'ip_2': (2, 8)" in repr_
+            assert "params:" in repr_
+            assert "inferred_params:" in repr_
+            assert '"param_1": 0' in repr_
+            assert '"param_2":[1,22]' in repr_.replace("\n", "").replace(" ", "")
+            assert '"ip_1": 123' in repr_
+            assert '"ip_2":[2,8]' in repr_.replace("\n", "").replace(" ", "")
 
 
 class TestTransformerModel:
@@ -247,11 +247,11 @@ class TestTransformerModel:
             requirements = Mock(prediction_requirements=None)
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyTransformerModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyTransformerModel":
                 # Do something...
                 return self
 
-            def _transform(self, data: Dataset) -> Dataset:
+            def _transform(self, data: Dataset, **kwargs) -> Dataset:
                 return Mock()
 
         my_transformer_model = MyTransformerModel(params={"param_1": 20})
@@ -265,11 +265,11 @@ class TestTransformerModel:
             requirements = Mock(prediction_requirements="something")
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyTransformerModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyTransformerModel":
                 # Do something...
                 return self
 
-            def _transform(self, data: Dataset) -> Dataset:
+            def _transform(self, data: Dataset, **kwargs) -> Dataset:
                 return Mock()
 
         with pytest.raises(ValueError) as excinfo:
@@ -290,11 +290,11 @@ class TestTransformerModel:
             requirements = Mock(prediction_requirements=None)
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyTransformerModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyTransformerModel":
                 # Do something...
                 return self
 
-            def _transform(self, data: Dataset) -> Dataset:
+            def _transform(self, data: Dataset, **kwargs) -> Dataset:
                 self.mock_transform(data)
                 return Mock()
 
@@ -318,11 +318,11 @@ class TestTransformerModel:
             requirements = Mock(prediction_requirements=None)
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyTransformerModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyTransformerModel":
                 # Do something...
                 return self
 
-            def _transform(self, data: Dataset) -> Dataset:
+            def _transform(self, data: Dataset, **kwargs) -> Dataset:
                 self.mock_transform(data)
                 return Mock()
 
@@ -349,11 +349,11 @@ class TestTransformerModel:
             requirements = Mock(prediction_requirements=None)
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyTransformerModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyTransformerModel":
                 self.mock_fit(data)
                 return self
 
-            def _transform(self, data: Dataset) -> Dataset:
+            def _transform(self, data: Dataset, **kwargs) -> Dataset:
                 self.mock_transform(data)
                 return Mock()
 
@@ -382,15 +382,15 @@ class TestTransformerModel:
             requirements = Mock(prediction_requirements=None)
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyTransformerModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyTransformerModel":
                 # Do something...
                 return self
 
-            def _transform(self, data: Dataset) -> Dataset:
+            def _transform(self, data: Dataset, **kwargs) -> Dataset:
                 # Do something...
                 return Mock()
 
-            def _inverse_transform(self, data: Dataset) -> Dataset:
+            def _inverse_transform(self, data: Dataset, **kwargs) -> Dataset:
                 self.mock_inverse_transform(data)
                 return Mock()
 
@@ -414,15 +414,15 @@ class TestTransformerModel:
             requirements = Mock(prediction_requirements=None)
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyTransformerModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyTransformerModel":
                 # Do something...
                 return self
 
-            def _transform(self, data: Dataset) -> Dataset:
+            def _transform(self, data: Dataset, **kwargs) -> Dataset:
                 # Do something...
                 return Mock()
 
-            def _inverse_transform(self, data: Dataset) -> Dataset:
+            def _inverse_transform(self, data: Dataset, **kwargs) -> Dataset:
                 self.mock_inverse_transform(data)
                 return Mock()
 
@@ -442,11 +442,11 @@ class TestTransformerModel:
             requirements = Mock(prediction_requirements=None)
             DEFAULT_PARAMS = {"param_1": 0}
 
-            def _fit(self, data: Dataset) -> "MyTransformerModel":
+            def _fit(self, data: Dataset, **kwargs) -> "MyTransformerModel":
                 # Do something...
                 return self
 
-            def _transform(self, data: Dataset) -> Dataset:
+            def _transform(self, data: Dataset, **kwargs) -> Dataset:
                 # Do something...
                 return Mock()
 

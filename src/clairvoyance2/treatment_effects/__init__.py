@@ -1,9 +1,8 @@
-from ..interface import NStepAheadHorizon, TimeIndexHorizon
-from .crn import CRNTreatmentEffectsModelClassifier, CRNTreatmentEffectsModelRegressor
+from .crn import CRNClassifier, CRNRegressor
+from .synctwin import SyncTwinRegressor
 
 __all__ = [
-    "CRNTreatmentEffectsModelClassifier",
-    "CRNTreatmentEffectsModelRegressor",
-    "NStepAheadHorizon",
-    "TimeIndexHorizon",
+    "CRNClassifier",
+    "CRNRegressor",
+    "SyncTwinRegressor",
 ]

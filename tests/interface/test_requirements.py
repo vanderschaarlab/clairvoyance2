@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pandas as pd
 import pytest
 
-from clairvoyance2.data import Dataset, StaticSamples, TimeSeriesSamples
+from clairvoyance2.data import Dataset, EventSamples, StaticSamples, TimeSeriesSamples
 from clairvoyance2.interface import DatasetRequirements, NStepAheadHorizon, Requirements
 from clairvoyance2.interface.requirements import (
     DataStructureOpts,
@@ -23,9 +23,12 @@ from clairvoyance2.interface.requirements import (
 @dataclass
 class MockDataset:
     temporal_covariates: TimeSeriesSamples
-    static_covariates: Optional[StaticSamples] = None
+    static_covariates: Optional[EventSamples] = None
+    event_covariates: Optional[StaticSamples] = None
     temporal_targets: Optional[TimeSeriesSamples] = None
     temporal_treatments: Optional[TimeSeriesSamples] = None
+    event_targets: Optional[EventSamples] = None
+    event_treatments: Optional[EventSamples] = None
 
     def check_temporal_containers_have_same_time_index(self):
         return True, None
@@ -188,13 +191,13 @@ class TestDataRequirements:
             )
 
             t_cov = Mock()
-            t_cov.samples_aligned = Mock(return_value=samples_aligned_returns_t_cov)
+            t_cov.all_samples_aligned = samples_aligned_returns_t_cov
 
             t_targ = Mock()
-            t_targ.samples_aligned = Mock(return_value=samples_aligned_returns_t_targ)
+            t_targ.all_samples_aligned = samples_aligned_returns_t_targ
 
             t_treat = Mock()
-            t_treat.samples_aligned = Mock(return_value=samples_aligned_returns_t_treat)
+            t_treat.all_samples_aligned = samples_aligned_returns_t_treat
 
             with expectation as excinfo:
                 RequirementsChecker.check_data_requirements_general(
