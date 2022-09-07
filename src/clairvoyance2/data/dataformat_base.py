@@ -127,8 +127,8 @@ class BaseContainer(CustomGetItemMixin[TIndexItem, TColumnItem], Sequence):
     def __str__(self) -> str:
         return self.__repr__()
 
-    def plot(self) -> Any:
-        return self._data.plot()
+    def plot(self, **kwargs) -> Any:
+        return self._data.plot(**kwargs)
 
     @property
     def empty(self) -> bool:

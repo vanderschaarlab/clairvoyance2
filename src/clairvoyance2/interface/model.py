@@ -91,6 +91,7 @@ class BaseModel(ABC):
     def _repr_dict(self, dict_: Dict, name: str) -> str:
         tab = "    "
         pretty_dict = json.dumps(dict_, indent=4, default=str)
+        pretty_dict = pretty_dict.replace(": true", ": True").replace(": false", ": False")
         dict_prefix = f"{name}:\n"
         dict_repr = f"{dict_prefix}{pretty_dict}"
         dict_repr = tab + f"\n{tab}".join(dict_repr.split("\n"))

@@ -375,10 +375,10 @@ class TimeSeriesSamples(
             arrays.append(ts.to_numpy_time_index(padding_indicator=padding_indicator, max_len=max_len))
         return np.asarray(arrays)
 
-    def plot(self, n: Optional[int] = None) -> Any:
+    def plot(self, n: Optional[int] = None, **kwargs) -> Any:
         for idx, ts in enumerate(self):
             print(f"Plotting {idx}-th sample.")
-            ts.plot()
+            ts.plot(**kwargs)
             if n is not None and idx + 1 >= n:
                 break
 

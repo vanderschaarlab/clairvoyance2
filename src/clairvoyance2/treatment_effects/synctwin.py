@@ -584,10 +584,10 @@ class SyncTwinRegressor(
             y_control=synctwin_tensors.y_control,
             itr=self._prediction_compute_iters,
         )
+        print("Done")
         y_hat_sample = y_hat[:, sample_index, :]
 
         y_hat_sample = y_hat_sample.detach().cpu().numpy()
-        print(y_hat_sample.shape)
         data_historic_temporal_targets = data.temporal_targets[sample_index]
         if TYPE_CHECKING:
             assert isinstance(data_historic_temporal_targets, TimeSeries)
