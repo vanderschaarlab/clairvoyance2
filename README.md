@@ -24,11 +24,37 @@
 
 
 
+
 ## Installation
 
-`pip install https://github.com/vanderschaarlab/clairvoyance2.git`
+`pip install git+https://github.com/vanderschaarlab/clairvoyance2.git`
+
+
+
+## Models
+
+| Model | Status |
+|-|-|
+| **Prediction (Forecasting)** |
+| RNN | ✅ Implemented |
+| Seq2Seq | ✅ Implemented |
+| [NeuralLaplace](https://github.com/samholt/NeuralLaplace) | 🔲 Planned |
+| **Imputation** |
+| {f,b}fill & Mean | ✅ Implemented |
+| [HyperImpute](https://proceedings.mlr.press/v162/jarrett22a/jarrett22a.pdf) | 🔲
+| **Individualized Treatment Effects** |
+| [CRN](https://openreview.net/forum?id=BJg866NFvB) | ✅ Implemented |
+| [SyncTwin](https://proceedings.neurips.cc/paper/2021/hash/19485224d128528da1602ca47383f078-Abstract.html) | ⚙️ Experimental |
+| [TE-CDE](https://proceedings.mlr.press/v162/seedat22b/seedat22b.pdf) | 🔲 Planned |
+| **Time-to-event Analysis** |
+| [Dynamic DeepHit](https://pubmed.ncbi.nlm.nih.gov/30951460/) | 🔲 Planned |
+| **Interpretability** |
+| [DynaMask](http://proceedings.mlr.press/v139/crabbe21a/crabbe21a.pdfsa) | 🔲 Planned |
+
 
 
 ## Tutorials
 
 * [📔 Basic Usage Notebook](tutorials/basic_usage.ipynb)
+* [📔 Example: CRN](tutorials/crn.ipynb)
+* [📔 Example: SyncTwin](tutorials/synctwin.ipynb)
