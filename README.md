@@ -20,7 +20,7 @@
 
 **⚠️ The library is in pre-alpha / dev. API will change without warning.**
 
-**clairvoyance2** is a library that unifies time series tasks for the medicine and healthcare use case.  It provides tools for manipulating multi-dimensional time series, as well as static data, and implements models for: time series prediction, individualized treatment effects estimation (*upcoming*), time-to-event analysis (*upcoming*), and model interpretability (*upcoming*).  **clairvoyance2** is primarily focussed on machine learning (ML) models.
+**clairvoyance2** is a library that unifies time series tasks for the medicine and healthcare use case.  It provides tools for manipulating multi-dimensional time series, as well as static data, and implements models for: time series prediction, individualized treatment effects estimation, time-to-event analysis (*upcoming*), and model interpretability (*upcoming*).  **clairvoyance2** is primarily focussed on machine learning models.
 
 
 
@@ -55,6 +55,12 @@
 
 ## Tutorials
 
-* [📔 Basic Usage Notebook](tutorials/basic_usage.ipynb)
+* [📔 Basic Usage](tutorials/basic_usage.ipynb)
 * [📔 Example: CRN](tutorials/crn.ipynb)
 * [📔 Example: SyncTwin](tutorials/synctwin.ipynb)
+
+
+## Contact
+
+If you wish to reach about to us specifically about `clairvoyance2` (bugs, suggestions, problems, ...) please message
+Evgeny on [LinkedIn](https://www.linkedin.com/in/e-s-saveliev/) for now, until we set up an official communication channel.
