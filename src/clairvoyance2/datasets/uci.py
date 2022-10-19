@@ -92,7 +92,26 @@ class UCIDiabetesRetriever(DatasetRetriever):
             with open(temp_file, "wb") as f:
                 f.write(uncompressed_data)
             with tarfile.open(temp_file) as tar:
-                tar.extractall(self.dataset_dir)  # NOTE: Will extract into a subdirectory "Diabetes-Data/"
+                def is_within_directory(directory, target):
+                    
+                    abs_directory = os.path.abspath(directory)
+                    abs_target = os.path.abspath(target)
+                
+                    prefix = os.path.commonprefix([abs_directory, abs_target])
+                    
+                    return prefix == abs_directory
+                
+                def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                
+                    for member in tar.getmembers():
+                        member_path = os.path.join(path, member.name)
+                        if not is_within_directory(path, member_path):
+                            raise Exception("Attempted Path Traversal in Tar File")
+                
+                    tar.extractall(path, members, numeric_owner=numeric_owner) 
+                    
+                
+                safe_extract(tar, self.dataset_dir)
             os.remove(temp_file)
 
     def process_individual_file(self, filepath: str) -> pd.DataFrame:
