@@ -57,7 +57,7 @@ class ConstraintsChecker:
 
     @staticmethod
     def _get_all_object_columns(df: pd.DataFrame) -> Iterable:
-        return (col for col, dtype in df.dtypes.iteritems() if dtype == object)
+        return (col for col, dtype in df.dtypes.items() if dtype == object)
 
     @staticmethod
     def _check_index_or_columns(
