@@ -21,8 +21,10 @@ def _extract_np_dtype_from_pd(_type: type) -> type:
 # we assume the following numpy types be equivalent to Python types.
 NP_EQUIVALENT_TYPES_MAP: Mapping[type, type] = {
     np.int_: int,
+    np.int32: int,
     np.int64: int,
     np.float_: float,
+    np.float32: float,
     np.float64: float,
     np.object_: object,
 }

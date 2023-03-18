@@ -8,7 +8,19 @@ from ..utils.common import python_type_from_np_pd_dtype
 from .internal_utils import all_items_are_of_types
 
 # NOTE: Obtained from https://pbpython.com/pandas_dtypes.html. May not be fully accurate.
-PD_ACCEPTABLE_EQUIVALENT_DTYPES = (object, int, float, bool, np.datetime64, pd.Timedelta, pd.Categorical)
+PD_ACCEPTABLE_EQUIVALENT_DTYPES = (
+    object,
+    int,
+    float,
+    bool,
+    np.datetime64,
+    pd.Timedelta,
+    pd.Categorical,
+    np.int32,
+    np.int64,
+    np.float64,
+    np.double,
+)
 
 
 # TODO: Unit test.
@@ -57,7 +69,7 @@ class ConstraintsChecker:
 
     @staticmethod
     def _get_all_object_columns(df: pd.DataFrame) -> Iterable:
-        return (col for col, dtype in df.dtypes.iteritems() if dtype == object)
+        return (col for col, dtype in df.dtypes.items() if dtype == object)
 
     @staticmethod
     def _check_index_or_columns(
@@ -96,7 +108,7 @@ class ConstraintsChecker:
     @staticmethod
     def _check_elements(df: pd.DataFrame, constraints: ElementConstraints) -> None:
         if constraints.dtypes is not None and len(constraints.dtypes) > 0:
-            if not all(dtype in constraints.dtypes for dtype in df.dtypes.values):
+            if not all(python_type_from_np_pd_dtype(dtype) in constraints.dtypes for dtype in df.dtypes.values):
                 raise TypeError(
                     f"DataFrame elements must be limited to dtypes: {constraints.dtypes}. "
                     "Check by calling `.dtype()` on your DataFrame."
