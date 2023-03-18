@@ -1,7 +1,8 @@
-from typing import Any, Callable, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler, OneHotEncoder, StandardScaler
+from typing_extensions import Protocol, runtime_checkable
 
 from ..data import Dataset, TimeSeriesSamples
 from ..data.utils import cast_time_series_samples_feature_names_to_str
