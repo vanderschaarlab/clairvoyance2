@@ -108,9 +108,7 @@ class ConstraintsChecker:
     @staticmethod
     def _check_elements(df: pd.DataFrame, constraints: ElementConstraints) -> None:
         if constraints.dtypes is not None and len(constraints.dtypes) > 0:
-            print("expected", constraints.dtypes)
-            print("actual", df.dtypes.values)
-            if not all(dtype in constraints.dtypes for dtype in df.dtypes.values):
+            if not all(python_type_from_np_pd_dtype(dtype) in constraints.dtypes for dtype in df.dtypes.values):
                 raise TypeError(
                     f"DataFrame elements must be limited to dtypes: {constraints.dtypes}. "
                     "Check by calling `.dtype()` on your DataFrame."
