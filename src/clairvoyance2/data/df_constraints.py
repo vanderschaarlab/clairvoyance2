@@ -8,7 +8,19 @@ from ..utils.common import python_type_from_np_pd_dtype
 from .internal_utils import all_items_are_of_types
 
 # NOTE: Obtained from https://pbpython.com/pandas_dtypes.html. May not be fully accurate.
-PD_ACCEPTABLE_EQUIVALENT_DTYPES = (object, int, float, bool, np.datetime64, pd.Timedelta, pd.Categorical)
+PD_ACCEPTABLE_EQUIVALENT_DTYPES = (
+    object,
+    int,
+    float,
+    bool,
+    np.datetime64,
+    pd.Timedelta,
+    pd.Categorical,
+    np.int32,
+    np.int64,
+    np.float64,
+    np.double,
+)
 
 
 # TODO: Unit test.
