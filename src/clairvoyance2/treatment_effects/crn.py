@@ -442,7 +442,6 @@ class CRNTreatmentEffectsModelBase(
         )
 
         for epoch_idx in range(self.params.epochs):
-
             n_samples_cumul = 0
             epoch_loss = 0.0
             epoch_loss_target = 0.0
@@ -533,7 +532,6 @@ class CRNTreatmentEffectsModelBase(
         )
 
         for epoch_idx in range(self.params.epochs):
-
             n_samples_cumul = 0
             epoch_loss = 0.0
             epoch_loss_target = 0.0

@@ -193,7 +193,6 @@ class StaticFeaturesConcatenator(TransformerModel):
 
         t_cov_sample: TimeSeries
         for sample_idx, t_cov_sample in zip(data.temporal_covariates.sample_indices, data.temporal_covariates):
-
             t_cov_sample_df = t_cov_sample.df
             t_cov_sample_df_new = t_cov_sample_df.copy()
 

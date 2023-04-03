@@ -91,8 +91,24 @@ class UCIDiabetesRetriever(DatasetRetriever):
             uncompressed_data = unlzw3.unlzw(Path(archive_file))
             with open(temp_file, "wb") as f:
                 f.write(uncompressed_data)
+
             with tarfile.open(temp_file) as tar:
-                tar.extractall(self.dataset_dir)  # NOTE: Will extract into a subdirectory "Diabetes-Data/"
+
+                def is_within_directory(directory, target):
+                    abs_directory = os.path.abspath(directory)
+                    abs_target = os.path.abspath(target)
+                    prefix = os.path.commonprefix([abs_directory, abs_target])
+                    return prefix == abs_directory
+
+                def safe_extract(tar, path=".", members=None, *, numeric_owner=False):
+                    for member in tar.getmembers():
+                        member_path = os.path.join(path, member.name)
+                        if not is_within_directory(path, member_path):
+                            raise Exception("Attempted Path Traversal in Tar File")
+                    tar.extractall(path, members, numeric_owner=numeric_owner)
+
+                safe_extract(tar, self.dataset_dir)  # NOTE: Will extract into a subdirectory "Diabetes-Data/"
+
             os.remove(temp_file)
 
     def process_individual_file(self, filepath: str) -> pd.DataFrame:
@@ -151,12 +167,14 @@ class UCIDiabetesRetriever(DatasetRetriever):
 
         # Case: make_regular=True.
         if self.make_regular:
-            full_range = df_all_features.index[-1] - df_all_features.index[0]
+            full_range = df_all_features.index[-1] - df_all_features.index[0]  # pyright: ignore
             n_periods = math.ceil(full_range / self._timedelta_for_make_regular)
             new_index = pd.date_range(
-                df_all_features.index[0], periods=n_periods + 1, freq=self._timedelta_for_make_regular
+                df_all_features.index[0],  # pyright: ignore
+                periods=n_periods + 1,
+                freq=self._timedelta_for_make_regular,
             )
-            assert new_index[-1] >= df_all_features.index[-1]
+            assert new_index[-1] >= df_all_features.index[-1]  # pyright: ignore
             df_all_features = df_all_features.reindex(new_index, method="nearest")
 
         # Case use_int_index=True.

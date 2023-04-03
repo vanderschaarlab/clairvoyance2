@@ -22,7 +22,7 @@ class FeedForwardNet(nn.Module):
         layer_counter = 0
         ordered_dict_components: OrderedDict[str, nn.Module] = OrderedDict()
 
-        for (in_feat, out_feat) in dim_pairs[:-1]:
+        for in_feat, out_feat in dim_pairs[:-1]:
             ordered_dict_components[f"linear_{layer_counter}"] = nn.Linear(in_feat, out_feat)
             if hidden_activations is not None:
                 ordered_dict_components[f"activation_{layer_counter}"] = init_activation(hidden_activations)

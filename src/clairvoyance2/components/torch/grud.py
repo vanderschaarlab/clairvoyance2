@@ -111,7 +111,6 @@ class GRUD(nn.Module):
         self.output_last = output_last
 
     def step(self, x, x_last_obsv, h, mask, delta):
-
         batch_size = x.shape[0]  # noqa  # pylint: disable=unused-variable
         dim_size = x.shape[1]  # noqa  # pylint: disable=unused-variable
 

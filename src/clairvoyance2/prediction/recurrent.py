@@ -177,7 +177,6 @@ class RecurrentNetNStepAheadPredictorBase(
             assert self.rnn_ff is not None and self.optim is not None
 
         for epoch_idx in range(self.params.epochs):
-
             n_samples = 0
             epoch_loss = 0.0
             for batch_idx, (t_cov, t_targ) in enumerate(dataloader):

@@ -17,7 +17,6 @@ def df_numeric():
 
 # NOTE: For now, only integration tests that make sure the whole dataformat ecosystem works.
 class TestIntegration:
-
     # TODO: Test timeseries with DatetimeIndex.
     @pytest.mark.parametrize(
         "data",

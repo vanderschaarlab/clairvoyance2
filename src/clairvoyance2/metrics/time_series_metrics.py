@@ -22,7 +22,6 @@ def squared_error(arr_true: np.ndarray, arr_pred: np.ndarray) -> np.ndarray:
 # TODO: Multiple types of output - per sample, per time-step sample, overall value.
 class MSEMetricTS(BaseMetricTS):
     def __call__(self, data_true: TimeSeriesSamples, data_pred: TimeSeriesSamples) -> TMetricValue:
-
         # TODO: All this will be moved to Metric requirements.
         assert data_true is not None
         assert data_pred is not None
