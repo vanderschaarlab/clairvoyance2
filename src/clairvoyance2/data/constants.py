@@ -34,71 +34,78 @@ with warnings.catch_warnings():
     # This is to suppress (expected) FutureWarnings for index types like pd.Int64Index.
     warnings.filterwarnings("ignore", message=r".*Use pandas.Index.*", category=FutureWarning)
 
-    if "NumericIndex" not in dir(pd):
+    if "Int64Index" in dir(pd):
         T_TSIndexClass = Union[
             pd.RangeIndex,
             pd.DatetimeIndex,
-            pd.Int64Index,
-            pd.UInt64Index,
-            pd.Float64Index,
+            pd.Int64Index,  # pylint: disable=no-member
+            pd.UInt64Index,  # pylint: disable=no-member
+            pd.Float64Index,  # pylint: disable=no-member
+            pd.Index,
         ]
     else:
-        T_TSIndexClass = Union[  # type: ignore
+        T_TSIndexClass = Union[pd.RangeIndex, pd.DatetimeIndex, pd.Index]  # type: ignore
+    if "Int64Index" in dir(pd):
+        T_TSIndexClass_AsTuple = (
             pd.RangeIndex,
             pd.DatetimeIndex,
-            pd.Int64Index,
-            pd.UInt64Index,
-            pd.Float64Index,
-            pd.NumericIndex,  # Future-proofing.
-        ]
-    T_TSIndexClass_AsTuple = (
-        pd.RangeIndex,
-        pd.DatetimeIndex,
-        pd.Int64Index,
-        pd.UInt64Index,
-        pd.Float64Index,
-        pd.NumericIndex if "NumericIndex" in dir(pd) else pd.Index,  # Future-proofing.
-        # NOTE: Other candidates: TimedeltaIndex, PeriodIndex.
-    )
+            pd.Int64Index,  # pylint: disable=no-member
+            pd.UInt64Index,  # pylint: disable=no-member
+            pd.Float64Index,  # pylint: disable=no-member
+            pd.Index,
+        )
+    else:
+        T_TSIndexClass_AsTuple = (
+            pd.RangeIndex,
+            pd.DatetimeIndex,
+            pd.Index,
+        )
 
-    if "NumericIndex" not in dir(pd):
+    if "Int64Index" in dir(pd):
         T_FeatureIndexClass = Union[
-            pd.Int64Index,
-            pd.UInt64Index,
+            pd.Int64Index,  # pylint: disable=no-member
+            pd.UInt64Index,  # pylint: disable=no-member
+            pd.Index,
         ]
     else:
         T_FeatureIndexClass = Union[  # type: ignore
-            pd.Int64Index,
-            pd.UInt64Index,
-            pd.NumericIndex,  # Future-proofing.
+            pd.Index,
         ]
-    T_FeatureIndexClass_AsTuple = (
-        (
-            pd.Int64Index,
-            pd.UInt64Index,
-            pd.NumericIndex if "NumericIndex" in dir(pd) else pd.Index,  # Future-proofing.
-        ),
-    )
+    if "Int64Index" in dir(pd):
+        T_FeatureIndexClass_AsTuple = (
+            (
+                pd.Int64Index,  # pylint: disable=no-member
+                pd.UInt64Index,  # pylint: disable=no-member
+                pd.Index,
+            ),
+        )
+    else:
+        T_FeatureIndexClass_AsTuple = ((pd.Index,),)
 
-    if "NumericIndex" not in dir(pd):
+    if "Int64Index" in dir(pd):
         T_SampleIndexClass = Union[
             pd.RangeIndex,
-            pd.Int64Index,
-            pd.UInt64Index,
+            pd.Int64Index,  # pylint: disable=no-member
+            pd.UInt64Index,  # pylint: disable=no-member
+            pd.Index,
         ]
     else:
         T_SampleIndexClass = Union[  # type: ignore
             pd.RangeIndex,
-            pd.Int64Index,
-            pd.UInt64Index,
-            pd.NumericIndex,
+            pd.Index,
         ]
-    T_SampleIndexClass_AsTuple = (
-        pd.RangeIndex,
-        pd.Int64Index,
-        pd.UInt64Index,
-        pd.NumericIndex if "NumericIndex" in dir(pd) else pd.Index,  # Future-proofing.
-    )
+    if "Int64Index" in dir(pd):
+        T_SampleIndexClass_AsTuple = (
+            pd.RangeIndex,
+            pd.Int64Index,  # pylint: disable=no-member
+            pd.UInt64Index,  # pylint: disable=no-member
+            pd.Index,
+        )
+    else:
+        T_SampleIndexClass_AsTuple = (
+            pd.RangeIndex,
+            pd.Index,
+        )
 
 T_SampleIndex_Compatible = Union[Sequence[T_SamplesIndexDtype], T_SampleIndexClass]
 
