@@ -386,7 +386,6 @@ class Seq2SeqCRNStylePredictorBase(
         )
 
         for epoch_idx in range(self.params.epochs):
-
             n_samples_cumul = 0
             epoch_loss = 0.0
             for _, (t_cov, t_targ) in enumerate(dataloader):
@@ -499,7 +498,6 @@ class Seq2SeqCRNStylePredictorBase(
         )
 
         for epoch_idx in range(self.params.epochs):
-
             n_samples_cumul = 0
             epoch_loss = 0.0
             for _, (h, c, t_targ, decoder_input) in enumerate(dataloader):

@@ -82,7 +82,6 @@ def pre_train_reconstruction_prognostic_loss(
     dec_sd = None
     dec_Y_sd = None
     for itr in range(1, niters + 1):
-
         optimizer.zero_grad()
 
         if batch_size is not None:
@@ -186,7 +185,6 @@ def train_B_self_expressive(
     lr=1e-3,
     test_freq=1000,
 ):
-
     # mini-batch training not implemented
     assert batch_size is None
 
@@ -201,7 +199,6 @@ def train_B_self_expressive(
 
     nsc_sd = None
     for itr in range(1, niters + 1):
-
         optimizer.zero_grad()
 
         B_reduced = nsc.get_B_reduced(batch_ind_full)
