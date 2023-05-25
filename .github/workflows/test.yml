@@ -41,7 +41,8 @@ jobs:
       - uses: actions/checkout@v2
         with:
           submodules: true
-      - uses: gautamkrishnar/keepalive-workflow@v1
+      # Appears to fail due to branch protections, currently no workaround.
+      # - uses: gautamkrishnar/keepalive-workflow@v1
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v4
         with:
